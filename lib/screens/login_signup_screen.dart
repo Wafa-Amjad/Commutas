@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -97,14 +98,34 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     _signInVehicleController.dispose();
     _signInPasswordController.dispose();
     _lockoutTimer?.cancel();
+    _errorDismissTimer?.cancel();
     super.dispose();
   }
 
+  Timer? _errorDismissTimer;
+
   void _onInputChanged() {
+    _errorDismissTimer?.cancel();
     setState(() {
       _errorMessage = null;
     });
   }
+
+  void _setError(String message) {
+    _errorDismissTimer?.cancel();
+    setState(() {
+      _errorMessage = message;
+    });
+    _errorDismissTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() {
+          _errorMessage = null;
+        });
+      }
+    });
+  }
+
+
 
   // Dynamic preview display: CIIT/Session-Program-RollNo/ATD
   String get _registrationPreviewText {
@@ -169,29 +190,21 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     if (_activeRole == UserRole.student) {
       final rollNo = _rollNoController.text.trim();
       if (rollNo.isEmpty) {
-        setState(() {
-          _errorMessage = "Enter a valid registration number, e.g., FA23-BCS-065";
-        });
+        _setError("Enter a valid registration number, e.g., FA23-BCS-065");
         return;
       }
       if (password.isEmpty) {
-        setState(() {
-          _errorMessage = "Enter your password";
-        });
+        _setError("Enter your password");
         return;
       }
     } else if (_activeRole == UserRole.vehicle) {
       final vehicleReg = _signInVehicleController.text.trim();
       if (vehicleReg.isEmpty || !RegExp(r'^[A-Z]{3}-\d{4}$').hasMatch(vehicleReg)) {
-        setState(() {
-          _errorMessage = "Enter a valid vehicle registration number, e.g., ABT-4471";
-        });
+        _setError("Enter a valid vehicle registration number, e.g., ABT-4471");
         return;
       }
       if (password.isEmpty) {
-        setState(() {
-          _errorMessage = "Enter your password";
-        });
+        _setError("Enter your password");
         return;
       }
     }
@@ -239,14 +252,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       if (_failedAttempts >= 5) {
         // Escalate lockouts: 5 attempts -> 1 minute lockout
         _startLockoutTimer(60);
-        setState(() {
-          _errorMessage = "Too many attempts. Try again in 01:00.";
-        });
+        _setError("Too many attempts. Try again in 01:00.");
       } else {
-        setState(() {
-          // AUTH-FR-015: Generic error for security
-          _errorMessage = "Incorrect identifier or password";
-        });
+        _setError("Incorrect identifier or password");
       }
     }
   }
@@ -322,7 +330,13 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                         ),
                       ),
                       padding: const EdgeInsets.all(20.0),
-                      child: _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _AnimatedHeader(isRegisterTab: _isRegisterTab),
+                          _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -410,17 +424,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Brand Logo
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 20.0),
-            child: Image.asset(
-              'assets/logo_theme_transparent.png',
-              height: 70,
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
         // Role indicators
         Row(
           children: [
@@ -430,31 +433,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         ),
         const SizedBox(height: 24.0),
 
-        Text(
-          'WELCOME BACK',
-          style: CommutasTextStyles.sectionEyebrow,
-        ),
-        const SizedBox(height: 8.0),
+
         Text(
           'Sign in to your account',
           style: CommutasTextStyles.cardTitle,
         ),
         const SizedBox(height: 20.0),
-
-        if (_errorMessage != null) ...[
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: CommutasColors.danger.withValues(alpha: 0.1),
-              border: Border.all(color: CommutasColors.danger, width: 1.5),
-            ),
-            child: Text(
-              _errorMessage!,
-              style: CommutasTextStyles.bodySmallDanger,
-            ),
-          ),
-          const SizedBox(height: 16.0),
-        ],
 
         // Input forms depending on Role
         if (_activeRole == UserRole.student) _buildStudentRegForm(),
@@ -490,7 +474,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             suffixIcon: IconButton(
               icon: Icon(
                 _obscureSignInPassword ? Icons.visibility : Icons.visibility_off,
-                color: CommutasColors.slateMuted,
               ),
               onPressed: () {
                 setState(() {
@@ -506,16 +489,11 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Trouble signing in?',
-              style: CommutasTextStyles.bodySmall,
-            ),
+
             if (_activeRole == UserRole.student)
               GestureDetector(
                 onTap: () {
-                  setState(() {
-                    _errorMessage = "Password reset instructions sent to student email.";
-                  });
+                  // TODO: Navigate to forgot password screen
                 },
                 child: Text(
                   'Forgot password?',
@@ -707,6 +685,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     required ValueChanged<String?> onChanged,
   }) {
     return Container(
+      height: 48.0,
       padding: const EdgeInsets.symmetric(horizontal: 10.0),
       decoration: const BoxDecoration(
         color: CommutasColors.white,
@@ -718,18 +697,32 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
+          menuMaxHeight: 400.0,
+          dropdownColor: CommutasColors.white,
+          borderRadius: BorderRadius.zero,
+          icon: const Icon(
+            Icons.arrow_drop_down,
+            color: CommutasColors.slateMuted,
+            size: 24,
+          ),
           style: CommutasTextStyles.fieldValue,
           onChanged: onChanged,
           items: items.map((String val) {
             return DropdownMenuItem<String>(
               value: val,
-              child: Text(val),
+              child: Text(
+                val,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: CommutasTextStyles.fieldValue,
+              ),
             );
           }).toList(),
         ),
       ),
     );
   }
+
 
   Widget _buildTextField({
     required String label,
@@ -815,17 +808,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Brand Logo
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 20.0),
-            child: Image.asset(
-              'assets/logo_theme_transparent.png',
-              height: 70,
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
         Text(
           'STUDENT VERIFICATION',
           style: CommutasTextStyles.sectionEyebrow,
@@ -836,21 +818,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           style: CommutasTextStyles.cardTitle,
         ),
         const SizedBox(height: 20.0),
-
-        if (_errorMessage != null) ...[
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: CommutasColors.danger.withValues(alpha: 0.1),
-              border: Border.all(color: CommutasColors.danger, width: 1.5),
-            ),
-            child: Text(
-              _errorMessage!,
-              style: CommutasTextStyles.bodySmallDanger,
-            ),
-          ),
-          const SizedBox(height: 16.0),
-        ],
 
         // Registration details
         _buildStudentRegForm(),
@@ -1054,29 +1021,111 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   // Footer fixed Identity Bar
   Widget _buildIdentityBar() {
-    String barText = '• COMMUTAS •';
     if (_isLoggedIn) {
-      barText = '$_loggedInName   $_loggedInRegNo';
+      return Container(
+        height: 56,
+        decoration: const BoxDecoration(
+          color: CommutasColors.white,
+          border: Border(
+            top: BorderSide(
+              color: CommutasColors.lineBorder,
+              width: 1.5,
+            ),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '$_loggedInName   $_loggedInRegNo',
+          style: CommutasTextStyles.identityBar,
+        ),
+      );
     }
 
-    return Container(
+    final hasFeedback = _errorMessage != null;
+    final isSuccessFeedback = hasFeedback && 
+        (_errorMessage!.toLowerCase().contains('success') || 
+         _errorMessage!.toLowerCase().contains('instructions') || 
+         _errorMessage!.toLowerCase().contains('sent'));
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       height: 56,
-      decoration: const BoxDecoration(
-        color: CommutasColors.white,
+      decoration: BoxDecoration(
+        color: hasFeedback 
+            ? (isSuccessFeedback ? CommutasColors.success : CommutasColors.danger)
+            : CommutasColors.white,
         border: Border(
           top: BorderSide(
-            color: CommutasColors.lineBorder,
+            color: hasFeedback ? Colors.transparent : CommutasColors.lineBorder,
             width: 1.5,
           ),
         ),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        barText,
-        style: CommutasTextStyles.identityBar,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.0, 0.2),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: hasFeedback
+            ? KeyedSubtree(
+                key: ValueKey<String>(_errorMessage!),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        isSuccessFeedback 
+                            ? Icons.check_circle_outline 
+                            : Icons.warning_amber_rounded,
+                        color: CommutasColors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        child: _MarqueeText(
+                          text: _errorMessage!,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: CommutasColors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8.0),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: CommutasColors.white, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          setState(() {
+                            _errorMessage = null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : const KeyedSubtree(
+                key: ValueKey<String>('moving_bus'),
+                child: _MovingBusAnimation(),
+              ),
       ),
     );
   }
+
+
 
   // Simple post-auth dashboard placeholder
   Widget _buildDashboard() {
@@ -1253,3 +1302,337 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     );
   }
 }
+
+// Animated Header Logo widget with vertically aligned logo (top) and catchphrases (bottom) looping
+class _AnimatedHeader extends StatefulWidget {
+  final bool isRegisterTab;
+
+  const _AnimatedHeader({required this.isRegisterTab});
+
+  @override
+  State<_AnimatedHeader> createState() => _AnimatedHeaderState();
+}
+
+class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _logoOpacity;
+  late final Animation<Offset> _logoOffset;
+  late final Animation<double> _textOpacity;
+  Timer? _phraseTimer;
+  int _phraseIndex = 0;
+
+  static const List<String> _signInPhrases = [
+    'Verify, pay, and ride instantly',
+    'Seamless HCE NFC-based fare collection',
+    'Your ticket to a smarter COMSATS commute',
+  ];
+
+  static const List<String> _signUpPhrases = [
+    'Create your digital transport wallet',
+    'Link COMSATS portal for quick verification',
+    'Secure campus transit at your fingertips',
+  ];
+
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+    ));
+
+    _logoOffset = Tween<Offset>(begin: const Offset(0.0, -0.15), end: Offset.zero).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+    ));
+
+    _textOpacity = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+    ));
+
+    _controller.forward();
+
+    // Loop catchphrases every 3 seconds
+    _phraseTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (mounted) {
+        setState(() {
+          _phraseIndex = (_phraseIndex + 1) % 3;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isRegisterTab != widget.isRegisterTab) {
+      setState(() {
+        _phraseIndex = 0;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _phraseTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final phrases = widget.isRegisterTab ? _signUpPhrases : _signInPhrases;
+    final catchphrase = phrases[_phraseIndex];
+
+    return Container(
+      height: 125,
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Sliding and fading Logo on load
+                SlideTransition(
+                  position: _logoOffset,
+                  child: Opacity(
+                    opacity: _logoOpacity.value,
+                    child: Image.asset(
+                      'assets/logo_theme_cropped.png',
+                      height: 75,
+                      fit: BoxFit.contain,
+                    ),
+
+                  ),
+                ),
+                const SizedBox(height: 8.0),
+                // Looping catchphrases below the logo
+                Opacity(
+                  opacity: _textOpacity.value,
+                  child: SizedBox(
+                    height: 20,
+                    width: double.infinity,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      child: Align(
+                        key: ValueKey<String>(catchphrase),
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          catchphrase,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.left,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            fontStyle: FontStyle.italic,
+                            color: CommutasColors.slateMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Animated horizontal rolling bus with wheel bounce animation
+class _MovingBusAnimation extends StatefulWidget {
+  const _MovingBusAnimation();
+
+  @override
+  State<_MovingBusAnimation> createState() => _MovingBusAnimationState();
+}
+
+class _MovingBusAnimationState extends State<_MovingBusAnimation> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _busPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 12),
+      vsync: this,
+    );
+
+    _busPosition = Tween<double>(begin: -1.3, end: 1.3).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.linear),
+    );
+
+    _controller.repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Road Line
+        Positioned(
+          bottom: 16,
+          left: 20,
+          right: 20,
+          child: Container(
+            height: 1.5,
+            color: CommutasColors.lineBorder.withValues(alpha: 0.4),
+          ),
+        ),
+        // Driving Bus
+        AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final bounce = math.sin(_controller.value * 120) * 1.2;
+            return Align(
+              alignment: Alignment(_busPosition.value, 0.0),
+              child: Transform.translate(
+                offset: Offset(0, bounce + 4),
+                child: const Icon(
+                  Icons.directions_bus_filled,
+                  color: CommutasColors.accentCobalt,
+                  size: 24,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// Marquee Text Widget for horizontal scrolling text headline in bottom bar
+class _MarqueeText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+
+  const _MarqueeText({required this.text, required this.style});
+
+  @override
+  State<_MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<_MarqueeText> {
+  late final ScrollController _scrollController;
+  bool _scrolling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndScroll();
+    });
+  }
+
+  void _checkAndScroll() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll > 0 && !_scrolling) {
+      _scrolling = true;
+      // Delay initial scroll by 600 ms
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          _scroll();
+        }
+      });
+    }
+  }
+
+  void _scroll() async {
+    if (!mounted || !_scrollController.hasClients) {
+      _scrolling = false;
+      return;
+    }
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) {
+      _scrolling = false;
+      return;
+    }
+
+    // Scroll speed: ~40 pixels per second
+    final duration = Duration(milliseconds: (maxScroll * 25).toInt());
+
+    try {
+      await _scrollController.animateTo(
+        maxScroll,
+        duration: duration,
+        curve: Curves.linear,
+      );
+      if (!mounted) return;
+      // Pause at the end for 1 second
+      await Future.delayed(const Duration(milliseconds: 1000));
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(0.0);
+      // Delay before restarting the scroll by 600 ms
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      _scroll();
+    } catch (_) {
+      _scrolling = false;
+    }
+  }
+
+
+  @override
+  void didUpdateWidget(covariant _MarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _scrolling = false;
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0.0);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkAndScroll();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      child: Text(
+        widget.text,
+        style: widget.style,
+        maxLines: 1,
+      ),
+    );
+  }
+}
+
