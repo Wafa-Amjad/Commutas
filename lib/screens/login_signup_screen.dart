@@ -313,15 +313,15 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             // Main Content Card area
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(top: 8.0, bottom: 24.0, left: 20.0, right: 20.0),
+                padding: const EdgeInsets.only(top: 16.0, bottom: 24.0, left: 20.0, right: 20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Tabs
-                    _buildTabBar(),
+                    // Brand Header: Logo and loopable catchphrase outside the card on top
+                    _AnimatedHeader(isRegisterTab: _isRegisterTab),
                     const SizedBox(height: 16.0),
                     
-                    // Main Card containing fields
+                    // Main Card containing switcher and input fields
                     Container(
                       decoration: const BoxDecoration(
                         color: CommutasColors.white,
@@ -333,7 +333,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _AnimatedHeader(isRegisterTab: _isRegisterTab),
+                          // Switcher Tabs inside the white card at the top
+                          _buildTabBar(),
+                          const SizedBox(height: 24.0),
                           _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
                         ],
                       ),
@@ -603,25 +605,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           style: CommutasTextStyles.fieldLabel,
         ),
         const SizedBox(height: 6.0),
-        // Disabled preview box
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-          decoration: const BoxDecoration(
-            color: CommutasColors.sageTint,
-            border: Border.fromBorderSide(
-              BorderSide(color: CommutasColors.lineBorder, width: 1.5),
-            ),
-          ),
-          child: Text(
-            _registrationPreviewText,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: CommutasColors.slateMuted,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12.0),
         // Dropdowns and Roll no input
         Row(
           children: [
@@ -653,22 +636,25 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             const SizedBox(width: 8.0),
             Expanded(
               flex: 4,
-              child: TextFormField(
-                controller: _rollNoController,
-                maxLength: 3,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: CommutasTextStyles.fieldValue,
-                decoration: InputDecoration(
-                  counterText: "",
-                  hintText: '000',
-                  hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
-                  filled: true,
-                  fillColor: CommutasColors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-                  enabledBorder: CommutasShapes.inputBorder,
-                  focusedBorder: CommutasShapes.inputFocusBorder,
-                  errorBorder: CommutasShapes.inputErrorBorder,
+              child: SizedBox(
+                height: 48.0,
+                child: TextFormField(
+                  controller: _rollNoController,
+                  maxLength: 3,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: CommutasTextStyles.fieldValue,
+                  decoration: InputDecoration(
+                    counterText: "",
+                    hintText: '000',
+                    hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                    filled: true,
+                    fillColor: CommutasColors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 11.0),
+                    enabledBorder: CommutasShapes.inputBorder,
+                    focusedBorder: CommutasShapes.inputFocusBorder,
+                    errorBorder: CommutasShapes.inputErrorBorder,
+                  ),
                 ),
               ),
             ),
@@ -1117,9 +1103,32 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                   ),
                 ),
               )
-            : const KeyedSubtree(
-                key: ValueKey<String>('moving_bus'),
-                child: _MovingBusAnimation(),
+            : KeyedSubtree(
+                key: const ValueKey<String>('brand_status_strip'),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Image.asset(
+                        'assets/logo_theme_cropped.png',
+                        height: 24,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(width: 8.0),
+                      Text(
+                        'Smart Transit Mobility',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: CommutasColors.slateMuted,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
       ),
     );
@@ -1457,76 +1466,6 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProvi
   }
 }
 
-// Animated horizontal rolling bus with wheel bounce animation
-class _MovingBusAnimation extends StatefulWidget {
-  const _MovingBusAnimation();
-
-  @override
-  State<_MovingBusAnimation> createState() => _MovingBusAnimationState();
-}
-
-class _MovingBusAnimationState extends State<_MovingBusAnimation> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _busPosition;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 12),
-      vsync: this,
-    );
-
-    _busPosition = Tween<double>(begin: -1.3, end: 1.3).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.linear),
-    );
-
-    _controller.repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Road Line
-        Positioned(
-          bottom: 16,
-          left: 20,
-          right: 20,
-          child: Container(
-            height: 1.5,
-            color: CommutasColors.lineBorder.withValues(alpha: 0.4),
-          ),
-        ),
-        // Driving Bus
-        AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            final bounce = math.sin(_controller.value * 120) * 1.2;
-            return Align(
-              alignment: Alignment(_busPosition.value, 0.0),
-              child: Transform.translate(
-                offset: Offset(0, bounce + 4),
-                child: const Icon(
-                  Icons.directions_bus_filled,
-                  color: CommutasColors.accentCobalt,
-                  size: 24,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
 
 // Marquee Text Widget for horizontal scrolling text headline in bottom bar
 class _MarqueeText extends StatefulWidget {
