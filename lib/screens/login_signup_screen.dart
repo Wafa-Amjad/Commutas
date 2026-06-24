@@ -1,4 +1,7 @@
+import 'services/auth_service.dart';
+import 'package:dio/dio.dart';
 import 'dart:async';
+// ignore: unused_import
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +20,10 @@ class LoginSignupScreen extends StatefulWidget {
 class _LoginSignupScreenState extends State<LoginSignupScreen> {
   // Tabs
   bool _isRegisterTab = false;
+
+  final AuthService _authService = AuthService();
+  bool _isServerLoading = false;
+  String _welcomeMessage = "";
 
   // Active Role (Sign In only)
   UserRole _activeRole = UserRole.student;
@@ -43,7 +50,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   // Loading and Error states
   bool _isLoading = false;
   String? _errorMessage;
-
 
   // Lockout simulation for Sign In
   int _failedAttempts = 0;
@@ -126,11 +132,11 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   }
 
 
-
-  // Dynamic preview display: CIIT/Session-Program-RollNo/ATD
+  // Dynamic preview displaySession-Program-Roll
+  // ignore: unused_element
   String get _registrationPreviewText {
     final rollNo = _rollNoController.text.trim();
-    return 'CIIT/$_selectedSession-$_selectedDept-$rollNo/ATD';
+    return '$_selectedSession-$_selectedDept-$rollNo';
   }
 
   // Validate values for signup checklist
@@ -210,51 +216,55 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     }
 
     setState(() {
-      _isLoading = true;
+      _isServerLoading = true;
     });
 
-    // Simulate backend roundtrip
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    // Simulation logic: mock authenticate
-    bool isSuccess = false;
-    if (_activeRole == UserRole.student) {
-      // Mock validation success if password is "password123"
-      if (password == 'password123') {
-        isSuccess = true;
-      }
-    } else if (_activeRole == UserRole.vehicle) {
-      if (password == 'vehicle123') {
-        isSuccess = true;
-      }
-    }
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (isSuccess) {
-      _failedAttempts = 0;
-      setState(() {
-        _isLoggedIn = true;
-        if (_activeRole == UserRole.student) {
-          _loggedInName = 'Mubashir Shahzaib';
-          _loggedInRegNo = 'FA23-BCS-065';
-        } else if (_activeRole == UserRole.vehicle) {
-          _loggedInName = 'Vehicle Bus #3';
-          _loggedInRegNo = _signInVehicleController.text.toUpperCase();
+    try {
+      if (_activeRole == UserRole.student) {
+        String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+        final response = await _authService.loginStudent(
+          regNo: fullRegNo, 
+          appPassword: _signInPasswordController.text.trim()
+        );
+        
+        final fullName = response?['student']?['full_name'];
+        if (fullName != null) {
+          setState(() {
+            _welcomeMessage = "Welcome $fullName";
+          });
         }
-      });
-    } else {
-      _failedAttempts++;
-      if (_failedAttempts >= 5) {
-        // Escalate lockouts: 5 attempts -> 1 minute lockout
-        _startLockoutTimer(60);
-        _setError("Too many attempts. Try again in 01:00.");
-      } else {
-        _setError("Incorrect identifier or password");
+      } else if (_activeRole == UserRole.vehicle) {
+        await Future.delayed(const Duration(seconds: 2));
+        if (password == 'vehicle123') {
+           setState(() {
+             _isLoggedIn = true;
+             _loggedInName = 'Vehicle Bus #3';
+             _loggedInRegNo = _signInVehicleController.text.toUpperCase();
+           });
+        } else {
+           _failedAttempts++;
+           if (_failedAttempts >= 5) {
+             _startLockoutTimer(60);
+             _setError("Too many attempts. Try again in 01:00.");
+           } else {
+             _setError("Incorrect identifier or password");
+           }
+        }
+      }
+    } catch (e) {
+      if (e is DioException && e.response != null) {
+        print("Server Error Response: ${e.response?.data}");
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isServerLoading = false;
+        });
       }
     }
   }
@@ -263,26 +273,41 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     if (!_isSignUpValid) return;
 
     setState(() {
-      _isLoading = true;
+      _isServerLoading = true;
       _errorMessage = null;
       
     });
 
-    // Simulate backend verification
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    // Success simulation
-    setState(() {
-      _isLoggedIn = true;
-      _loggedInName = 'Wafa Amjad';
-      _loggedInRegNo = 'FA23-BCS-133';
-    });
+    try {
+      String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+      final response = await _authService.registerStudent(
+        regNo: fullRegNo, 
+        portalPassword: _portalPasswordController.text.trim(), 
+        appPassword: _createPasswordController.text.trim()
+      );
+      
+      final fullName = response?['student']?['full_name'];
+      if (fullName != null) {
+        setState(() {
+          _welcomeMessage = "Welcome $fullName";
+        });
+      }
+    } catch (e) {
+      if (e is DioException && e.response != null) {
+        print("Server Error Response: ${e.response?.data}");
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isServerLoading = false;
+        });
+      }
+    }
   }
 
   void _handleLogout() {
@@ -305,51 +330,72 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       return _buildDashboard();
     }
 
-    return Scaffold(
-      backgroundColor: CommutasColors.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Main Content Card area
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(top: 16.0, bottom: 24.0, left: 20.0, right: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Brand Header: Logo and loopable catchphrase outside the card on top
-                    _AnimatedHeader(isRegisterTab: _isRegisterTab),
-                    const SizedBox(height: 16.0),
-                    
-                    // Main Card containing switcher and input fields
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: CommutasColors.white,
-                        border: Border.fromBorderSide(
-                          BorderSide(color: CommutasColors.lineBorder, width: 1.5),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: CommutasColors.surface,
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Main Content Card area
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(top: 16.0, bottom: 24.0, left: 20.0, right: 20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Brand Header: Logo and loopable catchphrase outside the card on top
+                        _AnimatedHeader(isRegisterTab: _isRegisterTab),
+                        const SizedBox(height: 16.0),
+                        
+                        if (_welcomeMessage.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              _welcomeMessage,
+                              style: CommutasTextStyles.cardTitle.copyWith(color: CommutasColors.accentCobalt),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        
+                        // Main Card containing switcher and input fields
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: CommutasColors.white,
+                            border: Border.fromBorderSide(
+                              BorderSide(color: CommutasColors.lineBorder, width: 1.5),
+                            ),
+                          ),
+                          padding: const EdgeInsets.all(20.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Switcher Tabs inside the white card at the top
+                              _buildTabBar(),
+                              const SizedBox(height: 24.0),
+                              _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
+                            ],
+                          ),
                         ),
-                      ),
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Switcher Tabs inside the white card at the top
-                          _buildTabBar(),
-                          const SizedBox(height: 24.0),
-                          _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
-                        ],
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                
+                // Bottom Identity Bar (Fixed branding structure)
+                _buildIdentityBar(),
+              ],
             ),
-            
-            // Bottom Identity Bar (Fixed branding structure)
-            _buildIdentityBar(),
-          ],
+          ),
         ),
-      ),
+        if (_isServerLoading)
+          Container(
+            color: Colors.black.withOpacity(0.55),
+            child: const Center(
+              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.orange)),
+            ),
+          ),
+      ],
     );
   }
 
@@ -434,7 +480,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           ],
         ),
         const SizedBox(height: 24.0),
-
 
         Text(
           'Sign in to your account',
@@ -708,7 +753,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       ),
     );
   }
-
 
   Widget _buildTextField({
     required String label,
@@ -1135,7 +1179,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   }
 
 
-
   // Simple post-auth dashboard placeholder
   Widget _buildDashboard() {
     return Scaffold(
@@ -1342,7 +1385,6 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProvi
     'Secure campus transit at your fingertips',
   ];
 
-
   @override
   void initState() {
     super.initState();
@@ -1466,7 +1508,6 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProvi
   }
 }
 
-
 // Marquee Text Widget for horizontal scrolling text headline in bottom bar
 class _MarqueeText extends StatefulWidget {
   final String text;
@@ -1539,7 +1580,6 @@ class _MarqueeTextState extends State<_MarqueeText> {
     }
   }
 
-
   @override
   void didUpdateWidget(covariant _MarqueeText oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1574,4 +1614,5 @@ class _MarqueeTextState extends State<_MarqueeText> {
     );
   }
 }
+
 
