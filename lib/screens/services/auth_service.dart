@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:developer' as developer;
 
 class AuthService {
   final Dio _dio = Dio(BaseOptions(
@@ -24,7 +25,7 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      print('Sign Up Failed: ${e.response?.data['detail'] ?? e.message}');
+      developer.log('Sign Up Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
       rethrow;
     }
   }
@@ -45,7 +46,7 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      print('Login Failed: ${e.response?.data['detail'] ?? e.message}');
+      developer.log('Login Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
       rethrow;
     }
   }

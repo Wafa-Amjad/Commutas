@@ -1,6 +1,13 @@
 import 'services/auth_service.dart';
+import 'services/biometric_service.dart';
 import 'package:dio/dio.dart';
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'verification_screen.dart';
+import 'dashboard_screen.dart';
+import 'package:flutter_biometric_change_detector/flutter_biometric_change_detector.dart';
+import 'package:flutter_biometric_change_detector/status_enum.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // ignore: unused_import
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -22,8 +29,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   bool _isRegisterTab = false;
 
   final AuthService _authService = AuthService();
+  final BiometricService _biometricService = BiometricService();
   bool _isServerLoading = false;
-  String _welcomeMessage = "";
 
   // Active Role (Sign In only)
   UserRole _activeRole = UserRole.student;
@@ -48,24 +55,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   bool _agreedToTerms = false;
 
   // Loading and Error states
-  bool _isLoading = false;
   String? _errorMessage;
 
   // Lockout simulation for Sign In
   int _failedAttempts = 0;
   int _lockoutSecondsLeft = 0;
   Timer? _lockoutTimer;
-
-  // Logged-in state
-  bool _isLoggedIn = false;
-  String _loggedInName = '';
-  String _loggedInRegNo = '';
-  double _walletBalance = 500.0;
-  final List<Map<String, dynamic>> _transactionHistory = [
-    {'type': 'Fare Deduction', 'amount': -25.0, 'date': '2026-06-23 09:12 AM', 'bus': 'ABT-4471'},
-    {'type': 'Wallet Top-up (JazzCash)', 'amount': 200.0, 'date': '2026-06-22 04:30 PM', 'bus': 'N/A'},
-    {'type': 'Fare Deduction', 'amount': -25.0, 'date': '2026-06-22 08:05 AM', 'bus': 'ABT-4471'},
-  ];
 
   // Lists extracted from HTML
   static const List<String> _sessions = [
@@ -122,7 +117,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     setState(() {
       _errorMessage = message;
     });
-    _errorDismissTimer = Timer(const Duration(seconds: 4), () {
+    _errorDismissTimer = Timer(const Duration(seconds: 15), () {
       if (mounted) {
         setState(() {
           _errorMessage = null;
@@ -187,7 +182,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
     setState(() {
       _errorMessage = null;
-      
     });
 
     final password = _signInPasswordController.text;
@@ -222,25 +216,56 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     try {
       if (_activeRole == UserRole.student) {
         String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+        final plainPassword = _signInPasswordController.text.trim();
         final response = await _authService.loginStudent(
           regNo: fullRegNo, 
-          appPassword: _signInPasswordController.text.trim()
+          appPassword: plainPassword
         );
         
         final fullName = response?['student']?['full_name'];
-        if (fullName != null) {
-          setState(() {
-            _welcomeMessage = "Welcome $fullName";
-          });
+        final regNo = response?['student']?['reg_no'];
+        if (response != null && fullName != null && regNo != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('session_active', true);
+          await prefs.setString('session_name', fullName);
+          await prefs.setString('session_reg_no', regNo);
+          await prefs.setString('session_role', 'student');
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DashboardScreen(
+                  studentName: fullName,
+                  studentRegNo: regNo,
+                  lastEnteredPassword: plainPassword,
+                ),
+              ),
+            );
+          }
+        } else {
+          _setError("Authentication failed. Invalid response from server.");
         }
       } else if (_activeRole == UserRole.vehicle) {
         await Future.delayed(const Duration(seconds: 2));
         if (password == 'vehicle123') {
-           setState(() {
-             _isLoggedIn = true;
-             _loggedInName = 'Vehicle Bus #3';
-             _loggedInRegNo = _signInVehicleController.text.toUpperCase();
-           });
+          final name = 'Vehicle Bus #3';
+          final regNo = _signInVehicleController.text.toUpperCase();
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('session_active', true);
+          await prefs.setString('session_name', name);
+          await prefs.setString('session_reg_no', regNo);
+          await prefs.setString('session_role', 'vehicle');
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DashboardScreen(
+                  studentName: name,
+                  studentRegNo: regNo,
+                ),
+              ),
+            );
+          }
         } else {
            _failedAttempts++;
            if (_failedAttempts >= 5) {
@@ -252,14 +277,107 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         }
       }
     } catch (e) {
-      if (e is DioException && e.response != null) {
-        print("Server Error Response: ${e.response?.data}");
+      String errorMsg = "Login failed. Check connection or credentials.";
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        if (detail != null) {
+          errorMsg = detail.toString();
+        } else if (e.message != null) {
+          errorMsg = e.message!;
+        }
+      } else {
+        errorMsg = e.toString();
       }
+      _setError(errorMsg);
+    } finally {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        setState(() {
+          _isServerLoading = false;
+        });
       }
+    }
+  }
+
+  void _handleBiometricLogin() async {
+    final hasBiometrics = await _biometricService.isBiometricsAvailable();
+    if (!hasBiometrics) {
+      _setError("Biometrics not supported or not configured on this device");
+      return;
+    }
+
+    try {
+      final status = await FlutterBiometricChangeDetector.checkBiometric();
+      if (status == AuthChangeStatus.CHANGED) {
+        await _biometricService.disableBiometrics();
+        _setError("Biometrics changed on this device. Sign in with your password to re-enable.");
+        return;
+      }
+    } catch (_) {}
+
+    final credentials = await _biometricService.getSavedCredentials();
+    if (credentials == null) {
+      _setError("Biometrics not setup. Sign in with password first to enable it.");
+      return;
+    }
+
+    final authenticated = await _biometricService.authenticate();
+    if (authenticated) {
+      final regNo = credentials['reg_no']!;
+      final password = credentials['password']!;
+      _performBiometricAutoLogin(regNo, password);
+    } else {
+      _setError("Biometric authentication cancelled or failed");
+    }
+  }
+
+  void _performBiometricAutoLogin(String regNo, String password) async {
+    setState(() {
+      _isServerLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await _authService.loginStudent(
+        regNo: regNo, 
+        appPassword: password
+      );
+      
+      final fullName = response?['student']?['full_name'];
+      final regNoFromApi = response?['student']?['reg_no'];
+      if (response != null && fullName != null && regNoFromApi != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('session_active', true);
+        await prefs.setString('session_name', fullName);
+        await prefs.setString('session_reg_no', regNoFromApi);
+        await prefs.setString('session_role', 'student');
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                studentName: fullName,
+                studentRegNo: regNoFromApi,
+                lastEnteredPassword: password,
+              ),
+            ),
+          );
+        }
+      } else {
+        _setError("Biometric sign-in failed. Use app password.");
+      }
+    } catch (e) {
+      String errorMsg = "Login failed. Check connection or credentials.";
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        if (detail != null) {
+          errorMsg = detail.toString();
+        } else if (e.message != null) {
+          errorMsg = e.message!;
+        }
+      } else {
+        errorMsg = e.toString();
+      }
+      _setError(errorMsg);
     } finally {
       if (mounted) {
         setState(() {
@@ -272,63 +390,45 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   void _handleSignUp() async {
     if (!_isSignUpValid) return;
 
-    setState(() {
-      _isServerLoading = true;
-      _errorMessage = null;
-      
-    });
+    final String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+    final String portalPassword = _portalPasswordController.text.trim();
+    final String appPassword = _createPasswordController.text.trim();
 
-    try {
-      String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
-      final response = await _authService.registerStudent(
-        regNo: fullRegNo, 
-        portalPassword: _portalPasswordController.text.trim(), 
-        appPassword: _createPasswordController.text.trim()
-      );
-      
-      final fullName = response?['student']?['full_name'];
-      if (fullName != null) {
+    // Navigate to full-screen standalone verification page
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VerificationScreen(
+          regNo: fullRegNo,
+          portalPassword: portalPassword,
+          appPassword: appPassword,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      if (result == true) {
+        // Success
+        await _biometricService.disableBiometrics();
         setState(() {
-          _welcomeMessage = "Welcome $fullName";
+          _portalPasswordController.clear();
+          _createPasswordController.clear();
+          _confirmPasswordController.clear();
+          _agreedToTerms = false;
+          _isRegisterTab = false; // Transition back to Sign In
         });
-      }
-    } catch (e) {
-      if (e is DioException && e.response != null) {
-        print("Server Error Response: ${e.response?.data}");
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isServerLoading = false;
-        });
+        _setError("Registration Successful! Please sign in with your app password.");
+      } else if (result is String) {
+        // Error returned from verification page
+        _setError(result);
       }
     }
   }
 
-  void _handleLogout() {
-    setState(() {
-      _isLoggedIn = false;
-      _loggedInName = '';
-      _loggedInRegNo = '';
-      _signInPasswordController.clear();
-      _portalPasswordController.clear();
-      _createPasswordController.clear();
-      _confirmPasswordController.clear();
-      _rollNoController.clear();
-      _agreedToTerms = false;
-    });
-  }
+
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoggedIn) {
-      return _buildDashboard();
-    }
 
     return Stack(
       children: [
@@ -347,16 +447,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                         // Brand Header: Logo and loopable catchphrase outside the card on top
                         _AnimatedHeader(isRegisterTab: _isRegisterTab),
                         const SizedBox(height: 16.0),
-                        
-                        if (_welcomeMessage.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Text(
-                              _welcomeMessage,
-                              style: CommutasTextStyles.cardTitle.copyWith(color: CommutasColors.accentCobalt),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
                         
                         // Main Card containing switcher and input fields
                         Container(
@@ -389,10 +479,44 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           ),
         ),
         if (_isServerLoading)
-          Container(
-            color: Colors.black.withOpacity(0.55),
-            child: const Center(
-              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.orange)),
+          Positioned.fill(
+            child: Container(
+              color: CommutasColors.navyInk.withValues(alpha: 0.40),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
+                child: Center(
+                  child: Container(
+                    width: 200,
+                    padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                    decoration: BoxDecoration(
+                      color: CommutasColors.white,
+                      border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.accentCobalt),
+                          ),
+                        ),
+                        const SizedBox(height: 16.0),
+                        Text(
+                          'Authenticating...',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: CommutasColors.slateMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
       ],
@@ -559,11 +683,37 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         ),
         const SizedBox(height: 24.0),
 
-        // Submit button
-        _buildPrimaryButton(
-          label: 'SIGN IN',
-          onPressed: _handleSignIn,
-        ),
+        // Submit button + Biometrics option (Student only)
+        if (_activeRole == UserRole.student)
+          Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: _buildPrimaryButton(
+                  label: 'SIGN IN',
+                  onPressed: _handleSignIn,
+                ),
+              ),
+              const SizedBox(width: 12.0),
+              Container(
+                height: 52,
+                width: 52,
+                decoration: BoxDecoration(
+                  color: CommutasColors.white,
+                  border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.fingerprint, color: CommutasColors.navyInk, size: 28.0),
+                  onPressed: _handleBiometricLogin,
+                ),
+              ),
+            ],
+          )
+        else
+          _buildPrimaryButton(
+            label: 'SIGN IN',
+            onPressed: _handleSignIn,
+          ),
         const SizedBox(height: 20.0),
 
         // OR Redirect
@@ -808,7 +958,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         isTimerActive ? 'TRY AGAIN IN ${_formatLockoutTime()}' : label.toUpperCase(),
         style: CommutasTextStyles.buttonLabel.copyWith(color: CommutasColors.slateMuted),
       );
-    } else if (_isLoading) {
+    } else if (_isServerLoading) {
       buttonContent = const SizedBox(
         height: 20,
         width: 20,
@@ -827,7 +977,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           padding: EdgeInsets.zero,
         ),
-        onPressed: (disabled || _isLoading || isTimerActive) ? null : onPressed,
+        onPressed: (disabled || _isServerLoading || isTimerActive) ? null : onPressed,
         child: buttonContent,
       ),
     );
@@ -1051,26 +1201,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   // Footer fixed Identity Bar
   Widget _buildIdentityBar() {
-    if (_isLoggedIn) {
-      return Container(
-        height: 56,
-        decoration: const BoxDecoration(
-          color: CommutasColors.white,
-          border: Border(
-            top: BorderSide(
-              color: CommutasColors.lineBorder,
-              width: 1.5,
-            ),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '$_loggedInName   $_loggedInRegNo',
-          style: CommutasTextStyles.identityBar,
-        ),
-      );
-    }
-
     final hasFeedback = _errorMessage != null;
     final isSuccessFeedback = hasFeedback && 
         (_errorMessage!.toLowerCase().contains('success') || 
@@ -1174,182 +1304,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                   ),
                 ),
               ),
-      ),
-    );
-  }
-
-
-  // Simple post-auth dashboard placeholder
-  Widget _buildDashboard() {
-    return Scaffold(
-      backgroundColor: CommutasColors.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              height: 96,
-              color: CommutasColors.navyInk,
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('COMMUTAS', style: CommutasTextStyles.appTitle),
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: CommutasColors.white),
-                    onPressed: _handleLogout,
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              height: 44,
-              color: CommutasColors.navyDark,
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Student Dashboard', style: CommutasTextStyles.contextStripLabel),
-                  Text('ACTIVE SESSION', style: CommutasTextStyles.contextStripMeta),
-                ],
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'OVERVIEW',
-                      style: CommutasTextStyles.sectionEyebrow,
-                    ),
-                    const SizedBox(height: 8.0),
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: CommutasColors.white,
-                        border: Border.fromBorderSide(
-                          BorderSide(color: CommutasColors.lineBorder, width: 1.5),
-                        ),
-                      ),
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Wallet Balance',
-                                style: CommutasTextStyles.fieldLabel,
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                                decoration: BoxDecoration(
-                                  color: CommutasColors.success.withValues(alpha: 0.1),
-                                  border: Border.all(color: CommutasColors.success, width: 1.0),
-                                ),
-                                child: Text(
-                                  '✓ VERIFIED',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: CommutasColors.success,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6.0),
-                          Text(
-                            'Rs. ${_walletBalance.toStringAsFixed(2)}',
-                            style: GoogleFonts.jetBrainsMono(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: CommutasColors.inkText,
-                            ),
-                          ),
-                          const SizedBox(height: 20.0),
-                          _buildPrimaryButton(
-                            label: 'Simulate Top-up (JazzCash Sandbox)',
-                            onPressed: () {
-                              setState(() {
-                                _walletBalance += 100.0;
-                                _transactionHistory.insert(0, {
-                                  'type': 'Wallet Top-up (JazzCash)',
-                                  'amount': 100.0,
-                                  'date': 'Just now',
-                                  'bus': 'N/A'
-                                });
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24.0),
-
-                    Text(
-                      'TRANSACTION HISTORY',
-                      style: CommutasTextStyles.sectionEyebrow,
-                    ),
-                    const SizedBox(height: 8.0),
-                    Container(
-                      decoration: const BoxDecoration(
-                        color: CommutasColors.white,
-                        border: Border.fromBorderSide(
-                          BorderSide(color: CommutasColors.lineBorder, width: 1.5),
-                        ),
-                      ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _transactionHistory.length,
-                        separatorBuilder: (context, index) => const Divider(
-                          color: CommutasColors.lineBorder,
-                          height: 1,
-                        ),
-                        itemBuilder: (context, index) {
-                          final tx = _transactionHistory[index];
-                          final isDeduction = tx['amount'] < 0;
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                            title: Text(
-                              tx['type'],
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: CommutasColors.inkText,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${tx['date']}   ${tx['bus'] != 'N/A' ? "Bus: ${tx['bus']}" : ""}',
-                              style: CommutasTextStyles.bodySmall,
-                            ),
-                            trailing: Text(
-                              '${isDeduction ? "" : "+"}${tx['amount'].toStringAsFixed(2)}',
-                              style: GoogleFonts.jetBrainsMono(
-                                fontWeight: FontWeight.bold,
-                                color: isDeduction ? CommutasColors.danger : CommutasColors.success,
-                                fontSize: 15,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // Bottom bar
-            _buildIdentityBar(),
-          ],
-        ),
       ),
     );
   }
