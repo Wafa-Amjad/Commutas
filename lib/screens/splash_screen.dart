@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'login_signup_screen.dart';
-import 'dashboard_screen.dart';
+import 'main_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 
@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       final regNo = prefs.getString('session_reg_no') ?? '';
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => DashboardScreen(
+          pageBuilder: (context, animation, secondaryAnimation) => MainScreen(
             studentName: name,
             studentRegNo: regNo,
           ),

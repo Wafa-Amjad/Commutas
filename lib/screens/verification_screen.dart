@@ -111,7 +111,7 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CommutasColors.surface,
+      backgroundColor: CommutasColors.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -135,6 +135,7 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                   decoration: BoxDecoration(
                     color: CommutasColors.white,
                     border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                    borderRadius: BorderRadius.zero,
                   ),
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
@@ -187,7 +188,7 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                           width: double.infinity,
                           child: TextButton(
                             style: TextButton.styleFrom(
-                              backgroundColor: CommutasColors.navyInk,
+                              backgroundColor: CommutasColors.primaryNavy,
                               shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                               padding: EdgeInsets.zero,
                             ),
@@ -210,7 +211,7 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                           width: double.infinity,
                           child: TextButton(
                             style: TextButton.styleFrom(
-                              backgroundColor: CommutasColors.navyInk,
+                              backgroundColor: CommutasColors.primaryNavy,
                               shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                               padding: EdgeInsets.zero,
                             ),

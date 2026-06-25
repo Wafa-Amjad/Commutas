@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'verification_screen.dart';
-import 'dashboard_screen.dart';
+import 'main_screen.dart';
 import 'package:flutter_biometric_change_detector/flutter_biometric_change_detector.dart';
 import 'package:flutter_biometric_change_detector/status_enum.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -242,7 +242,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => DashboardScreen(
+                builder: (context) => MainScreen(
                   studentName: fullName,
                   studentRegNo: regNo,
                   lastEnteredPassword: plainPassword,
@@ -267,7 +267,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => DashboardScreen(
+                builder: (context) => MainScreen(
                   studentName: name,
                   studentRegNo: regNo,
                 ),
@@ -362,7 +362,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => DashboardScreen(
+              builder: (context) => MainScreen(
                 studentName: fullName,
                 studentRegNo: regNoFromApi,
                 lastEnteredPassword: password,
@@ -437,7 +437,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: CommutasColors.surface,
+          backgroundColor: CommutasColors.background,
           body: SafeArea(
             child: Column(
               children: [
@@ -454,11 +454,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                         
                         // Main Card containing switcher and input fields
                         Container(
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: CommutasColors.white,
-                            border: Border.fromBorderSide(
-                              BorderSide(color: CommutasColors.lineBorder, width: 1.5),
-                            ),
+                            border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                            borderRadius: BorderRadius.zero,
                           ),
                           padding: const EdgeInsets.all(20.0),
                           child: Column(
@@ -485,7 +484,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         if (_isServerLoading)
           Positioned.fill(
             child: Container(
-              color: CommutasColors.navyInk.withValues(alpha: 0.40),
+              color: CommutasColors.primaryNavy.withValues(alpha: 0.40),
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
                 child: Center(
@@ -495,6 +494,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                     decoration: BoxDecoration(
                       color: CommutasColors.white,
                       border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -504,7 +504,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                           width: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.0,
-                            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.accentCobalt),
+                            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
                           ),
                         ),
                         const SizedBox(height: 16.0),
@@ -545,7 +545,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: !_isRegisterTab ? CommutasColors.accentCobalt : Colors.transparent,
+                    color: !_isRegisterTab ? CommutasColors.primaryNavy : Colors.transparent,
                     width: 2.0,
                   ),
                 ),
@@ -555,7 +555,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: !_isRegisterTab ? CommutasColors.navyInk : CommutasColors.slateMuted,
+                  color: !_isRegisterTab ? CommutasColors.primaryNavy : CommutasColors.slateMuted,
                 ),
               ),
             ),
@@ -575,7 +575,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: _isRegisterTab ? CommutasColors.accentCobalt : Colors.transparent,
+                    color: _isRegisterTab ? CommutasColors.primaryNavy : Colors.transparent,
                     width: 2.0,
                   ),
                 ),
@@ -585,7 +585,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: _isRegisterTab ? CommutasColors.navyInk : CommutasColors.slateMuted,
+                  color: _isRegisterTab ? CommutasColors.primaryNavy : CommutasColors.slateMuted,
                 ),
               ),
             ),
@@ -678,7 +678,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 child: Text(
                   'Forgot password?',
                   style: CommutasTextStyles.bodySmall.copyWith(
-                    color: CommutasColors.accentCobalt,
+                    color: CommutasColors.primaryNavy,
                     decoration: TextDecoration.underline,
                   ),
                 ),
@@ -710,9 +710,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 decoration: BoxDecoration(
                   color: CommutasColors.white,
                   border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.fingerprint, color: CommutasColors.navyInk, size: 28.0),
+                  icon: const Icon(Icons.fingerprint, color: CommutasColors.primaryNavy, size: 28.0),
                   onPressed: _handleBiometricLogin,
                 ),
               ),
@@ -751,7 +752,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               child: Text(
                 'Create account',
                 style: CommutasTextStyles.bodySmall.copyWith(
-                  color: CommutasColors.accentCobalt,
+                  color: CommutasColors.primaryNavy,
                   decoration: TextDecoration.underline,
                   fontWeight: FontWeight.bold,
                 ),
@@ -778,10 +779,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 2.0),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? CommutasColors.navyInk : CommutasColors.white,
+            color: isActive ? CommutasColors.primaryNavy : CommutasColors.white,
             border: Border.fromBorderSide(
               BorderSide(
-                color: isActive ? CommutasColors.accentCobalt : CommutasColors.lineBorder,
+                color: isActive ? CommutasColors.primaryNavy : CommutasColors.lineBorder,
                 width: isActive ? 2.0 : 1.5,
               ),
             ),
@@ -955,7 +956,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     final isTimerActive = _lockoutSecondsLeft > 0;
     
     // Build background and style config
-    Color buttonColor = CommutasColors.navyInk;
+    Color buttonColor = CommutasColors.primaryNavy;
     Widget buttonContent = Text(
       isTimerActive ? 'TRY AGAIN IN ${_formatLockoutTime()}' : label.toUpperCase(),
       style: CommutasTextStyles.buttonLabel,
@@ -1129,7 +1130,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               width: 24,
               child: Checkbox(
                 value: _agreedToTerms,
-                activeColor: CommutasColors.accentCobalt,
+                activeColor: CommutasColors.primaryNavy,
                 shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                 onChanged: (bool? val) {
                   setState(() {
@@ -1172,7 +1173,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               child: Text(
                 'Log in',
                 style: CommutasTextStyles.bodySmall.copyWith(
-                  color: CommutasColors.accentCobalt,
+                  color: CommutasColors.primaryNavy,
                   decoration: TextDecoration.underline,
                   fontWeight: FontWeight.bold,
                 ),

@@ -140,7 +140,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CommutasColors.surface,
+      backgroundColor: CommutasColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -156,7 +156,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       child: Row(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.arrow_back, color: CommutasColors.navyInk),
+                            icon: const Icon(Icons.arrow_back, color: CommutasColors.primaryNavy),
                             onPressed: () => Navigator.pop(context),
                           ),
                           const SizedBox(width: 4),
@@ -165,7 +165,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             style: GoogleFonts.inter(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: CommutasColors.navyInk,
+                              color: CommutasColors.primaryNavy,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -176,11 +176,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
                     // Main card containing inputs
                     Container(
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: CommutasColors.white,
-                        border: Border.fromBorderSide(
-                          BorderSide(color: CommutasColors.lineBorder, width: 1.5),
-                        ),
+                        border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                        borderRadius: BorderRadius.zero,
                       ),
                       padding: const EdgeInsets.all(20.0),
                       child: Column(

@@ -42,16 +42,21 @@ class BiometricService {
     return prefs.getBool(_keyBiometricsEnabled) ?? false;
   }
 
-  Future<void> enableBiometrics({
+  Future<bool> enableBiometrics({
     required String regNo,
     required String password,
     required String name,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyBiometricsEnabled, true);
-    await _secureStorage.write(key: _keySavedRegNo, value: regNo);
-    await _secureStorage.write(key: _keySavedPassword, value: password);
-    await _secureStorage.write(key: _keySavedName, value: name);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyBiometricsEnabled, true);
+      await _secureStorage.write(key: _keySavedRegNo, value: regNo);
+      await _secureStorage.write(key: _keySavedPassword, value: password);
+      await _secureStorage.write(key: _keySavedName, value: name);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> disableBiometrics() async {

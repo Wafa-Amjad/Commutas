@@ -4,131 +4,151 @@ import 'package:google_fonts/google_fonts.dart';
 class CommutasColors {
   CommutasColors._();
 
-  static const Color navyInk = Color(0xFF1A1B33);
-  static const Color navyDark = Color(0xFF0E0F1F);
-  static const Color sageTint = Color(0xFFE7E9DE);
-  static const Color accentCobalt = Color(0xFF3B4CCB);
-  static const Color accentDark = Color(0xFF2935A0);
-  static const Color inkText = Color(0xFF1A1B22);
-  static const Color slateMuted = Color(0xFF6B6F66);
-  static const Color lineBorder = Color(0xFFB9BDAF);
-  static const Color surface = Color(0xFFEDEFE3);
-  static const Color danger = Color(0xFFB3261E);
-  static const Color success = Color(0xFF3D6B3D);
+  // Primary Palette
+  static const Color primaryNavy = Color(0xFF1A1B33);
+  static const Color emeraldGreen = Color(0xFF2E7D32);
+  static const Color deepGreen = Color(0xFF1B5E20);
+  static const Color sageGreen = Color(0xFF81C784);
+  static const Color lightGreenBg = Color(0xFFF1F8E9);
+  static const Color offWhite = Color(0xFFFDFDFD);
+  static const Color backgroundGray = Color(0xFFF5F7FA);
+  
+  // Status Colors
+  static const Color success = Color(0xFF388E3C);
+  static const Color danger = Color(0xFFD32F2F);
+  static const Color warning = Color(0xFFFFA000);
+  
+  // Neutral Colors
+  static const Color inkText = Color(0xFF212121);
+  static const Color slateMuted = Color(0xFF757575);
+  static const Color lineBorder = Color(0xFFE0E0E0);
+  
+  // Wallet Gradient
+  static const List<Color> walletGradient = [
+    Color(0xFFE8F5E9),
+    Color(0xFFC8E6C9),
+  ];
+
+  // Aliases for backward compatibility
+  static const Color background = backgroundGray;
+  static const Color surface = Colors.white;
   static const Color white = Colors.white;
+  static const Color accentCobalt = primaryNavy;
+  static const Color sageTint = lightGreenBg;
+  static const Color navyInk = primaryNavy;
 }
 
 class CommutasTextStyles {
   CommutasTextStyles._();
 
-  static TextStyle appTitle = GoogleFonts.jetBrainsMono(
-    fontSize: 22,
-    fontWeight: FontWeight.bold,
-    color: CommutasColors.white,
+  static TextStyle heading1 = GoogleFonts.inter(
+    fontSize: 24,
+    fontWeight: FontWeight.w700,
+    color: CommutasColors.primaryNavy,
   );
 
-  static TextStyle contextStripLabel = GoogleFonts.jetBrainsMono(
-    fontSize: 14,
-    fontWeight: FontWeight.normal,
-    color: CommutasColors.white,
-  );
-
-  static TextStyle contextStripMeta = GoogleFonts.jetBrainsMono(
-    fontSize: 12,
-    fontWeight: FontWeight.normal,
-    letterSpacing: 0.5,
-    color: CommutasColors.white,
-  );
-
-  static TextStyle sectionEyebrow = GoogleFonts.inter(
-    fontSize: 12,
-    fontWeight: FontWeight.w500,
-    letterSpacing: 1.0,
-    color: CommutasColors.slateMuted,
-  );
-
-  static TextStyle cardTitle = GoogleFonts.inter(
+  static TextStyle heading2 = GoogleFonts.inter(
     fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: CommutasColors.inkText,
-  );
-
-  static TextStyle fieldLabel = GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.normal,
-    color: CommutasColors.slateMuted,
-  );
-
-  static TextStyle fieldValue = GoogleFonts.inter(
-    fontSize: 15,
-    fontWeight: FontWeight.w500,
-    color: CommutasColors.inkText,
-  );
-
-  static TextStyle buttonLabel = GoogleFonts.inter(
-    fontSize: 14,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.5,
-    color: CommutasColors.white,
+    color: CommutasColors.primaryNavy,
   );
 
-  static TextStyle otpDigit = GoogleFonts.jetBrainsMono(
-    fontSize: 22,
+  static TextStyle bodyLarge = GoogleFonts.inter(
+    fontSize: 16,
     fontWeight: FontWeight.w500,
     color: CommutasColors.inkText,
   );
 
-  static TextStyle identityBar = GoogleFonts.inter(
+  static TextStyle bodyMedium = GoogleFonts.inter(
     fontSize: 14,
-    fontWeight: FontWeight.w500,
-    color: CommutasColors.slateMuted,
+    fontWeight: FontWeight.normal,
+    color: CommutasColors.inkText,
   );
 
   static TextStyle bodySmall = GoogleFonts.inter(
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: FontWeight.normal,
     color: CommutasColors.slateMuted,
   );
-  
-  static TextStyle bodySmallDanger = GoogleFonts.inter(
-    fontSize: 13,
-    fontWeight: FontWeight.normal,
-    color: CommutasColors.danger,
+
+  static TextStyle labelBold = GoogleFonts.inter(
+    fontSize: 12,
+    fontWeight: FontWeight.bold,
+    color: CommutasColors.primaryNavy,
+    letterSpacing: 0.2,
   );
+  
+  static TextStyle labelCaption = GoogleFonts.inter(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    color: CommutasColors.emeraldGreen,
+  );
+
+  // Aliases for backward compatibility
+  static TextStyle sectionEyebrow = labelBold;
+  static TextStyle cardTitle = heading2;
+  static TextStyle fieldLabel = bodySmall;
+  static TextStyle fieldValue = bodyMedium;
+  static TextStyle buttonLabel = labelBold.copyWith(color: Colors.white);
 }
 
 class CommutasShapes {
   CommutasShapes._();
 
-  static const OutlinedBorder rectBorder = RoundedRectangleBorder(
-    borderRadius: BorderRadius.zero,
-    side: BorderSide(
-      color: CommutasColors.lineBorder,
-      width: 1.5,
-    ),
+  static const double borderRadius = 0.0;
+  
+  static BorderRadius cardRadius = BorderRadius.circular(borderRadius);
+  
+  static BoxDecoration cardDecoration = BoxDecoration(
+    color: Colors.white,
+    borderRadius: cardRadius,
+    border: Border.all(color: CommutasColors.lineBorder, width: 1),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.04),
+        blurRadius: 10,
+        offset: const Offset(0, 2),
+      ),
+    ],
   );
 
-  static const OutlineInputBorder inputBorder = OutlineInputBorder(
-    borderRadius: BorderRadius.zero,
-    borderSide: BorderSide(
-      color: CommutasColors.lineBorder,
-      width: 1.5,
-    ),
+  // Aliases for backward compatibility
+  static OutlineInputBorder inputBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(borderRadius),
+    borderSide: const BorderSide(color: CommutasColors.lineBorder),
   );
-
-  static const OutlineInputBorder inputFocusBorder = OutlineInputBorder(
-    borderRadius: BorderRadius.zero,
-    borderSide: BorderSide(
-      color: CommutasColors.accentCobalt,
-      width: 2.0,
-    ),
+  static OutlineInputBorder inputFocusBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(borderRadius),
+    borderSide: const BorderSide(color: CommutasColors.emeraldGreen, width: 2),
   );
+  static OutlineInputBorder inputErrorBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(borderRadius),
+    borderSide: const BorderSide(color: CommutasColors.danger),
+  );
+}
 
-  static const OutlineInputBorder inputErrorBorder = OutlineInputBorder(
-    borderRadius: BorderRadius.zero,
-    borderSide: BorderSide(
-      color: CommutasColors.danger,
-      width: 1.5,
+class CommutasThemes {
+  static ThemeData lightTheme = ThemeData(
+    useMaterial3: true,
+    scaffoldBackgroundColor: CommutasColors.backgroundGray,
+    primaryColor: CommutasColors.emeraldGreen,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: CommutasColors.emeraldGreen,
+      primary: CommutasColors.emeraldGreen,
+      secondary: CommutasColors.primaryNavy,
+      surface: Colors.white,
+    ),
+    textTheme: GoogleFonts.interTextTheme(),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: true,
+      iconTheme: IconThemeData(color: CommutasColors.primaryNavy),
+      titleTextStyle: TextStyle(
+        color: CommutasColors.primaryNavy,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
     ),
   );
 }
