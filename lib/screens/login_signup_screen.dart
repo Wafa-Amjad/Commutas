@@ -8,6 +8,7 @@ import 'dashboard_screen.dart';
 import 'package:flutter_biometric_change_detector/flutter_biometric_change_detector.dart';
 import 'package:flutter_biometric_change_detector/status_enum.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'reset_password_screen.dart';
 // ignore: unused_import
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -221,10 +222,17 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           regNo: fullRegNo, 
           appPassword: plainPassword
         );
-        
         final fullName = response?['student']?['full_name'];
         final regNo = response?['student']?['reg_no'];
         if (response != null && fullName != null && regNo != null) {
+          // If biometric is enabled for a different account, clear it.
+          if (await _biometricService.isBiometricsEnabled()) {
+            final savedCreds = await _biometricService.getSavedCredentials();
+            if (savedCreds != null && savedCreds['reg_no'] != regNo) {
+              await _biometricService.disableBiometrics();
+            }
+          }
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('session_active', true);
           await prefs.setString('session_name', fullName);
@@ -417,10 +425,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           _agreedToTerms = false;
           _isRegisterTab = false; // Transition back to Sign In
         });
-        _setError("Registration Successful! Please sign in with your app password.");
-      } else if (result is String) {
-        // Error returned from verification page
-        _setError(result);
       }
     }
   }
@@ -663,8 +667,13 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
             if (_activeRole == UserRole.student)
               GestureDetector(
-                onTap: () {
-                  // TODO: Navigate to forgot password screen
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ResetPasswordScreen(),
+                    ),
+                  );
                 },
                 child: Text(
                   'Forgot password?',
@@ -1102,13 +1111,13 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16.0),
-
-        // Password Checklist
-        _buildChecklistItem('8+ characters', _hasEightChars),
-        _buildChecklistItem('At least one letter', _hasLetter),
-        _buildChecklistItem('At least one digit', _hasDigit),
-        _buildChecklistItem('Passwords match', _passwordsMatch),
+        if (_createPasswordController.text.isNotEmpty || _confirmPasswordController.text.isNotEmpty) ...[
+          const SizedBox(height: 16.0),
+          _buildChecklistItem('8+ characters', _hasEightChars),
+          _buildChecklistItem('At least one letter', _hasLetter),
+          _buildChecklistItem('At least one digit', _hasDigit),
+          _buildChecklistItem('Passwords match', _passwordsMatch),
+        ],
         const SizedBox(height: 16.0),
 
         // Terms and conditions
@@ -1132,7 +1141,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             const SizedBox(width: 8.0),
             Expanded(
               child: Text(
-                'I have read and agree to the Terms and Conditions.',
+                'I agree to the Terms and Conditions.',
                 style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText),
               ),
             ),

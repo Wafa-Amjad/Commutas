@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme.dart';
 import 'services/biometric_service.dart';
+import 'services/auth_service.dart';
 import 'login_signup_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final BiometricService _biometricService = BiometricService();
+  final AuthService _authService = AuthService();
   bool _isBiometricsEnabled = false;
 
   @override
@@ -50,15 +52,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    String? password = widget.lastEnteredPassword;
+    final String? password = widget.lastEnteredPassword;
     if (password == null || password.isEmpty) {
-      password = await _promptForPasswordConfirmation();
-      if (password == null || password.isEmpty) {
-        setState(() {
-          _isBiometricsEnabled = false;
-        });
-        return;
-      }
+      _showErrorSnackBar("For security, biometrics can only be enabled immediately after signing in with your password.");
+      setState(() {
+        _isBiometricsEnabled = false;
+      });
+      return;
     }
 
     final authenticated = await _biometricService.authenticate();
@@ -88,80 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _showSuccessSnackBar("Biometric authentication disabled.");
   }
 
-  Future<String?> _promptForPasswordConfirmation() async {
-    final TextEditingController confirmController = TextEditingController();
-    bool obscureConfirm = true;
 
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              backgroundColor: CommutasColors.white,
-              title: Text(
-                'Confirm App Password',
-                style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 16, color: CommutasColors.navyInk),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Enter your Commutas app password to enable biometric login.',
-                    style: GoogleFonts.inter(color: CommutasColors.slateMuted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 16.0),
-                  TextFormField(
-                    controller: confirmController,
-                    obscureText: obscureConfirm,
-                    style: CommutasTextStyles.fieldValue,
-                    decoration: InputDecoration(
-                      hintText: 'App password',
-                      hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
-                      filled: true,
-                      fillColor: CommutasColors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
-                      enabledBorder: CommutasShapes.inputBorder,
-                      focusedBorder: CommutasShapes.inputFocusBorder,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureConfirm ? Icons.visibility : Icons.visibility_off,
-                          color: CommutasColors.slateMuted,
-                        ),
-                        onPressed: () {
-                          setDialogState(() {
-                            obscureConfirm = !obscureConfirm;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  style: TextButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-                  child: Text('CANCEL', style: GoogleFonts.inter(color: CommutasColors.danger, fontWeight: FontWeight.bold)),
-                  onPressed: () => Navigator.pop(context, null),
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-                  child: Text('CONFIRM', style: GoogleFonts.inter(color: CommutasColors.accentCobalt, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    final pass = confirmController.text.trim();
-                    Navigator.pop(context, pass.isEmpty ? null : pass);
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
   void _setErrorDialog(String message) {
     showDialog(

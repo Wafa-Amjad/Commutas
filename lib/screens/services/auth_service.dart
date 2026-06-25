@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 
 class AuthService {
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'https://commutas-server-production.up.railway.app',
+    baseUrl: 'https://commutas.onrender.com',
     headers: {'Content-Type': 'application/json'},
   ));
 
@@ -50,4 +50,28 @@ class AuthService {
       rethrow;
     }
   }
+
+  // 3. PASSWORD RESET METHOD
+  Future<Map<String, dynamic>?> resetPassword({
+    required String regNo,
+    required String portalPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await _dio.post('/auth/reset-password', data: {
+        'reg_no': regNo,
+        'portal_password': portalPassword,
+        'new_password': newPassword,
+      });
+
+      if (response.statusCode == 200) {
+        return response.data; // Contains success message detail
+      }
+      return null;
+    } on DioException catch (e) {
+      developer.log('Reset Password Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
+      rethrow;
+    }
+  }
 }
+

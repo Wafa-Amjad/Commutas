@@ -66,6 +66,7 @@ flutter:
   assets:
     - assets/logo_theme_transparent.png
     - assets/logo_theme_cropped.png
+    - assets/logo_theme_cropped_white_bg.png
 
 
 
