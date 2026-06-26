@@ -109,9 +109,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: 110,
                 height: 110,
                 decoration: BoxDecoration(
-                  color: CommutasColors.lightGreenBg,
+                  color: CommutasColors.cobaltTint,
                   borderRadius: BorderRadius.zero,
-                  border: Border.all(color: CommutasColors.emeraldGreen, width: 2),
+                  border: Border.all(color: CommutasColors.accentCobalt, width: 2),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.zero,
@@ -126,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: CommutasColors.emeraldGreen,
+                      color: CommutasColors.accentCobalt,
                       borderRadius: BorderRadius.zero,
                     ),
                     child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
@@ -144,7 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Icon(Icons.verified, color: Colors.blue, size: 20),
             ],
           ),
-          Text(widget.studentRegNo, style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.emeraldGreen)),
+          Text(widget.studentRegNo, style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.accentCobalt)),
         ],
       ),
     );

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "366952545741",
+    "project_id": "commutas-20eb7",
+    "storage_bucket": "commutas-20eb7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:366952545741:android:9ffa370a01d7cc5c6e5884",
+        "android_client_info": {
+          "package_name": "com.example.commutas"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZlidY3mFJo51Tfi_OrbqJXSGb9htcj_k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -141,6 +141,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   bool get _hasEightChars => _createPasswordController.text.length >= 8;
   bool get _hasLetter => RegExp(r'[a-zA-Z]').hasMatch(_createPasswordController.text);
   bool get _hasDigit => RegExp(r'\d').hasMatch(_createPasswordController.text);
+  bool get _hasValidMaxLength => _createPasswordController.text.length <= 32;
   bool get _passwordsMatch =>
       _createPasswordController.text.isNotEmpty &&
       _createPasswordController.text == _confirmPasswordController.text;
@@ -149,7 +150,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     final rollNo = _rollNoController.text.trim();
     if (rollNo.isEmpty || !RegExp(r'^\d{1,3}$').hasMatch(rollNo)) return false;
     if (_portalPasswordController.text.isEmpty) return false;
-    if (!_hasEightChars || !_hasLetter || !_hasDigit) return false;
+    if (!_hasEightChars || !_hasLetter || !_hasDigit || !_hasValidMaxLength) return false;
     if (!_passwordsMatch) return false;
     if (!_agreedToTerms) return false;
     return true;
@@ -240,6 +241,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           await prefs.setString('session_name', fullName);
           await prefs.setString('session_reg_no', regNo);
           await prefs.setString('session_role', 'student');
+          final token = response['access_token'];
+          if (token != null) {
+            await prefs.setString('session_token', token);
+          }
           if (mounted) {
             Navigator.pushReplacement(
               context,
@@ -360,6 +365,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         await prefs.setString('session_name', fullName);
         await prefs.setString('session_reg_no', regNoFromApi);
         await prefs.setString('session_role', 'student');
+        final token = response['access_token'];
+        if (token != null) {
+          await prefs.setString('session_token', token);
+        }
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -1057,6 +1066,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         TextFormField(
           controller: _createPasswordController,
           obscureText: _obscureCreatePassword,
+          maxLength: 32,
+          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Enter new password',
@@ -1091,6 +1102,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         TextFormField(
           controller: _confirmPasswordController,
           obscureText: _obscureConfirmPassword,
+          maxLength: 32,
+          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Re-enter new password',
@@ -1117,6 +1130,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         if (_createPasswordController.text.isNotEmpty || _confirmPasswordController.text.isNotEmpty) ...[
           const SizedBox(height: 16.0),
           _buildChecklistItem('8+ characters', _hasEightChars),
+          _buildChecklistItem('Maximum 32 characters', _hasValidMaxLength),
           _buildChecklistItem('At least one letter', _hasLetter),
           _buildChecklistItem('At least one digit', _hasDigit),
           _buildChecklistItem('Passwords match', _passwordsMatch),

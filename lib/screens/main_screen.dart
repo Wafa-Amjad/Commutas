@@ -52,7 +52,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
       const ScheduleScreen(),
       const NFCPayScreen(),
-      const WalletScreen(),
+      WalletScreen(studentRegNo: widget.studentRegNo),
       ProfileScreen(
         studentName: widget.studentName,
         studentRegNo: widget.studentRegNo,
@@ -110,14 +110,14 @@ class _MainScreenState extends State<MainScreen> {
         children: [
           Icon(
             icon,
-            color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy.withOpacity(0.4),
+            color: isSelected ? CommutasColors.accentCobalt : CommutasColors.primaryNavy.withOpacity(0.4),
             size: 24,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy.withOpacity(0.4),
+              color: isSelected ? CommutasColors.accentCobalt : CommutasColors.primaryNavy.withOpacity(0.4),
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               fontSize: 10,
             ),
@@ -128,7 +128,7 @@ class _MainScreenState extends State<MainScreen> {
               height: 2,
               width: 12,
               decoration: BoxDecoration(
-                color: CommutasColors.emeraldGreen,
+                color: CommutasColors.accentCobalt,
                 borderRadius: BorderRadius.zero,
               ),
             ),
@@ -149,7 +149,7 @@ class _MainScreenState extends State<MainScreen> {
           borderRadius: BorderRadius.zero, // Rectangular feel
           boxShadow: [
             BoxShadow(
-              color: CommutasColors.emeraldGreen.withOpacity(0.2),
+              color: CommutasColors.accentCobalt.withOpacity(0.2),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -160,14 +160,14 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             Icon(
               Icons.nfc_rounded,
-              color: isSelected ? CommutasColors.emeraldGreen : Colors.white,
+              color: isSelected ? CommutasColors.accentCobalt : Colors.white,
               size: 24,
             ),
             const SizedBox(height: 2),
             Text(
               'PAY',
               style: TextStyle(
-                color: isSelected ? CommutasColors.emeraldGreen : Colors.white,
+                color: isSelected ? CommutasColors.accentCobalt : Colors.white,
                 fontSize: 8,
                 fontWeight: FontWeight.bold,
               ),

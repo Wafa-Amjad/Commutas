@@ -29,11 +29,15 @@ class CommutasColors {
     Color(0xFFC8E6C9),
   ];
 
+  // Cobalt Colors
+  static const Color accentCobalt = Color(0xFF3B4CCB);
+  static const Color cobaltLight = Color(0xFF5C6BDB);
+  static const Color cobaltTint = Color(0xFFEEF0FC);
+
   // Aliases for backward compatibility
   static const Color background = backgroundGray;
   static const Color surface = Colors.white;
   static const Color white = Colors.white;
-  static const Color accentCobalt = primaryNavy;
   static const Color sageTint = lightGreenBg;
   static const Color navyInk = primaryNavy;
 }
