@@ -9,6 +9,8 @@ import 'package:flutter_biometric_change_detector/flutter_biometric_change_detec
 import 'package:flutter_biometric_change_detector/status_enum.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'reset_password_screen.dart';
+import 'package:flutter/gestures.dart'; // RichText tracking k liyen
+import 'package:url_launcher/url_launcher.dart'; // Live link open krne k liyen
 // ignore: unused_import
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -1122,40 +1124,56 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         const SizedBox(height: 16.0),
 
         // Terms and conditions
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // Checkbox aur Text spans wala block jise replace krna hai:
+Row(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    SizedBox(
+      height: 24,
+      width: 24,
+      child: Checkbox(
+        value: _agreedToTerms,
+        activeColor: CommutasColors.primaryNavy, // theme.dart k mutabiq primaryNavy use ho rha hai
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero), // Strict 0px sharp edges
+        onChanged: (bool? val) {
+          setState(() {
+            _agreedToTerms = val ?? false;
+          });
+        },
+      ),
+    ),
+    const SizedBox(width: 8.0),
+    Expanded(
+      child: RichText(
+        text: TextSpan(
+          text: 'I agree to the ',
+          style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText), // theme.dart k input rules mapping
           children: [
-            SizedBox(
-              height: 24,
-              width: 24,
-              child: Checkbox(
-                value: _agreedToTerms,
-                activeColor: CommutasColors.primaryNavy,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                onChanged: (bool? val) {
-                  setState(() {
-                    _agreedToTerms = val ?? false;
-                  });
+            TextSpan(
+              text: 'Terms and Conditions',
+              style: CommutasTextStyles.bodySmall.copyWith(
+                color: CommutasColors.primaryNavy, // Link color matches your dark navy token style
+                decoration: TextDecoration.underline,
+                fontWeight: FontWeight.bold,
+              ),
+              recognizer: TapGestureRecognizer()
+                ..onTap = () async {
+                  final url = Uri.parse('https://commutas-app.netlify.app/');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
                 },
-              ),
             ),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Text(
-                'I agree to the Terms and Conditions.',
-                style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText),
-              ),
+            TextSpan(
+              text: '.',
+              style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText),
             ),
           ],
         ),
-        const SizedBox(height: 24.0),
-
-        // Submit Button
-        _buildPrimaryButton(
-          label: 'CREATE ACCOUNT',
-          onPressed: _handleSignUp,
-          disabled: !_isSignUpValid,
-        ),
+      ),
+    ),
+  ],
+),
         const SizedBox(height: 20.0),
 
         // Redirect back to login
