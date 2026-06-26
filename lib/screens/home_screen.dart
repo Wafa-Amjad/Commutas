@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
@@ -29,13 +31,14 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
   final BiometricService _biometricService = BiometricService();
   final WalletService _walletService = WalletService();
   bool _isBiometricEnabled = false;
   double _walletBalance = 0.0;
   bool _isLoadingBalance = true;
   String? _accessToken;
+  late final AnimationController _busAnimationController;
 
   @override
   void initState() {
@@ -43,10 +46,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadBiometricStatus();
     _loadTokenAndBalance();
+    _busAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
   }
 
   @override
   void dispose() {
+    _busAnimationController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -145,14 +153,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            _buildStudentInfoCard(),
-            const SizedBox(height: 16),
-            _buildWalletCard(),
+            _buildCombinedHeaderWalletCard(),
             const SizedBox(height: 16),
             _buildNfcPaymentCard(),
-            const SizedBox(height: 16),
-            _buildQuickStatsSection(),
-            const SizedBox(height: 16),
+            _buildRoadDivider(),
+            _buildQuickActions(),
+            _buildRoadDivider(),
+            _buildUpcomingBusCard(),
+            _buildRoadDivider(),
             _buildBiometricControl(),
             const SizedBox(height: 24),
           ],
@@ -193,101 +201,159 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildStudentInfoCard() {
-    Widget avatarWidget;
-    if (widget.avatarPath == null) {
-      avatarWidget = const Icon(Icons.person, size: 40, color: CommutasColors.primaryNavy);
-    } else if (widget.isAsset) {
-      avatarWidget = Image.asset(widget.avatarPath!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person));
-    } else {
-      avatarWidget = Image.file(File(widget.avatarPath!), fit: BoxFit.cover);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: CommutasColors.backgroundGray,
-              borderRadius: BorderRadius.zero,
-              border: Border.all(color: CommutasColors.lineBorder, width: 1),
-            ),
-            child: avatarWidget,
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Good Morning 👋", style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted)),
-                const SizedBox(height: 4),
-                Text(widget.studentName, style: CommutasTextStyles.heading1.copyWith(fontSize: 24)),
-                Text(widget.studentRegNo, style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.slateMuted, fontSize: 13)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  String _formatStudentName(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '';
+    if (parts.length == 1) return parts[0];
+    final firstName = parts[0];
+    final lastPart = parts[parts.length - 1];
+    if (lastPart.isEmpty) return firstName;
+    return '$firstName ${lastPart[0]}.';
   }
 
-  Widget _buildWalletCard() {
-    final balanceText = _isLoadingBalance
-        ? 'Loading...'
-        : 'Rs. ${_walletBalance.toStringAsFixed(2)}';
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
 
+  String _getGreetingEmoji() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return ' ☀️';
+    if (hour < 17) return ' 🌤️';
+    return ' 🌙';
+  }
+
+  Widget _buildCombinedHeaderWalletCard() {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: CommutasColors.lightGreenBg,
+      decoration: const BoxDecoration(
+        color: CommutasColors.primaryNavy,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: CommutasColors.emeraldGreen.withOpacity(0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Wallet Balance', style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted)),
-                  const SizedBox(height: 8),
-                  Text(balanceText, style: CommutasTextStyles.heading1.copyWith(fontSize: 32, color: CommutasColors.primaryNavy)),
-                ],
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '${_getGreeting()}, ',
+                        style: GoogleFonts.inter(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      TextSpan(
+                        text: _formatStudentName(widget.studentName),
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextSpan(
+                        text: _getGreetingEmoji(),
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              Icon(Icons.wallet, color: CommutasColors.emeraldGreen.withOpacity(0.8), size: 48),
+              const SizedBox(width: 12),
+              const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: CommutasColors.emeraldGreen,
+                size: 32,
+              ),
             ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Wallet Balance',
+            style: CommutasTextStyles.bodySmall.copyWith(
+              color: Colors.white60,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Rs. ',
+                  style: CommutasTextStyles.heading1.copyWith(
+                    color: CommutasColors.emeraldGreen,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                TextSpan(
+                  text: _isLoadingBalance ? 'Loading...' : _walletBalance.toStringAsFixed(2),
+                  style: CommutasTextStyles.heading1.copyWith(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              ElevatedButton.icon(
-                onPressed: _showAddFundsSheet,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Funds'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CommutasColors.primaryNavy,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                  elevation: 0,
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _showAddFundsSheet,
+                  icon: const Icon(Icons.add, size: 18, color: CommutasColors.emeraldGreen),
+                  label: Text(
+                    'Add Funds',
+                    style: CommutasTextStyles.labelBold.copyWith(
+                      color: CommutasColors.emeraldGreen,
+                      fontSize: 14,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: CommutasColors.emeraldGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    elevation: 0,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
-              OutlinedButton(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: CommutasColors.primaryNavy,
-                  side: const BorderSide(color: CommutasColors.primaryNavy),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please select the Wallet tab at the bottom to view your full history.')),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white, width: 1.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  ),
+                  child: Text(
+                    'View Wallet',
+                    style: CommutasTextStyles.labelBold.copyWith(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
-                child: const Text('View Wallet'),
               ),
             ],
           ),
@@ -298,62 +364,100 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildNfcPaymentCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: CommutasColors.primaryNavy,
-        borderRadius: CommutasShapes.cardRadius,
-      ),
-      child: Column(
+      height: 140,
+      decoration: CommutasShapes.cardDecoration,
+      clipBehavior: Clip.hardEdge,
+      child: Stack(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          // 1. 3D Background animation stretching across the entire card
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _busAnimationController,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _ThreeDBackgroundPainter(animationValue: _busAnimationController.value),
+                );
+              },
+            ),
+          ),
+          
+          // 2. Hand-drawn bus translating across the entire card width
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _busAnimationController,
+              builder: (context, _) {
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final double busWidth = 100;
+                    final double busHeight = 60;
+                    
+                    final double totalDistance = constraints.maxWidth + busWidth;
+                    final double leftPos = constraints.maxWidth - (_busAnimationController.value * totalDistance);
+                    final double topPos = constraints.maxHeight * 0.42;
+                    
+                    return Stack(
+                      children: [
+                        Positioned(
+                          left: leftPos,
+                          top: topPos,
+                          width: busWidth,
+                          height: busHeight,
+                          child: CustomPaint(
+                            painter: _TopUpBusPainter(animationValue: _busAnimationController.value),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          
+          // 3. Foreground Text & Content
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.92),
+                    Colors.white.withOpacity(0.40),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
                 children: [
-                  Text('Tap To Pay', style: CommutasTextStyles.heading2.copyWith(color: Colors.white)),
-                  Text('Hold phone near reader', style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white70)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Tap To Pay',
+                          style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Hold your phone\nnear the reader',
+                          style: CommutasTextStyles.bodySmall.copyWith(
+                            color: CommutasColors.navyInk.withOpacity(0.75),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Icon(
+                          Icons.contactless,
+                          color: CommutasColors.emeraldGreen,
+                          size: 28,
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: CommutasColors.emeraldGreen,
-                  borderRadius: BorderRadius.zero,
-                ),
-                child: const Icon(Icons.contactless, color: Colors.white, size: 24),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Wave pattern animation simulator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(4, (index) {
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: 4,
-                height: 16 + (index * 8.0),
-                decoration: BoxDecoration(
-                  color: CommutasColors.emeraldGreen.withOpacity(0.3 + (index * 0.2)),
-                  borderRadius: BorderRadius.zero,
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.zero,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('NFC Status', style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60)),
-                Text('READY', style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.emeraldGreen)),
-              ],
             ),
           ),
         ],
@@ -361,45 +465,306 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildQuickStatsSection() {
-    return Row(
+  Widget _buildQuickActions() {
+    final List<Map<String, dynamic>> items = [
+      {'icon': Icons.add_card_rounded, 'label': 'Top Up', 'action': _showAddFundsSheet},
+      {
+        'icon': Icons.receipt_long_rounded,
+        'label': 'Transactions',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please select the Wallet tab at the bottom to view transactions.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.directions_bus_rounded,
+        'label': 'My Trips',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('My Trips is currently under development.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.credit_card_rounded,
+        'label': 'Bus Passes',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bus Passes is currently under development.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.map_rounded,
+        'label': 'Routes',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please select the Schedule tab at the bottom to view routes.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.support_agent_rounded,
+        'label': 'Support',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Support is currently under development.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.campaign_rounded,
+        'label': 'Announcements',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Announcements is currently under development.')),
+          );
+        }
+      },
+      {
+        'icon': Icons.more_horiz_rounded,
+        'label': 'More',
+        'action': () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('More options are currently under development.')),
+          );
+        }
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSmallStat('Last Trip', 'Today, 8:05 AM', Icons.directions_bus),
-        const SizedBox(width: 8),
-        _buildSmallStat('Trips Taken', '12', Icons.confirmation_number),
-        const SizedBox(width: 8),
-        _buildSmallStat('Total Spent', 'Rs. 600', Icons.payments),
-        const SizedBox(width: 8),
-        _buildSmallStat('Savings', 'Rs. 120', Icons.eco),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text(
+            'Quick Actions',
+            style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
+          ),
+        ),
+        SizedBox(
+          height: 90,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return Padding(
+                padding: EdgeInsets.only(
+                  left: index == 0 ? 0 : 8,
+                  right: index == items.length - 1 ? 0 : 8,
+                ),
+                child: GestureDetector(
+                  onTap: item['action'] as VoidCallback,
+                  child: Container(
+                    width: 90,
+                    decoration: CommutasShapes.cardDecoration,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          item['icon'] as IconData,
+                          color: CommutasColors.primaryNavy,
+                          size: 24,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item['label'] as String,
+                          style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildSmallStat(String label, String value, IconData icon) {
-    return Expanded(
-      child: Container(
-        height: 110,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        decoration: CommutasShapes.cardDecoration,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: CommutasColors.primaryNavy, size: 20),
-            const SizedBox(height: 10),
-            Text(
-              label, 
-              textAlign: TextAlign.center,
-              style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value, 
-              textAlign: TextAlign.center,
-              style: CommutasTextStyles.bodySmall.copyWith(fontSize: 10, fontWeight: FontWeight.bold)
-            ),
-          ],
+  Widget _buildUpcomingBusCard() {
+    final now = DateTime.now();
+    final hour = now.hour;
+    final minute = now.minute;
+    final double timeInDouble = hour + minute / 60.0;
+
+    String nextTripRoute;
+    String nextTripPath;
+    String nextTripTime;
+    String leavesInText;
+    int seatsLeft = 28;
+    int totalSeats = 50;
+
+    if (timeInDouble < 8.0) {
+      nextTripRoute = 'Route 01';
+      nextTripPath = 'Main Campus → Dhamtor Campus';
+      nextTripTime = '8:00 AM';
+      final diffMin = (8 * 60) - (hour * 60 + minute);
+      leavesInText = 'Leaves in $diffMin min';
+    } else if (timeInDouble < 13.5) {
+      nextTripRoute = 'Route 01';
+      nextTripPath = 'Dhamtor Campus → Main Campus';
+      nextTripTime = '1:30 PM';
+      final diffMin = (13.5 * 60).toInt() - (hour * 60 + minute);
+      if (diffMin > 60) {
+        final diffHours = diffMin ~/ 60;
+        final remainingMins = diffMin % 60;
+        leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m';
+      } else {
+        leavesInText = 'Leaves in $diffMin min';
+      }
+    } else if (timeInDouble < 16.5) {
+      nextTripRoute = 'Route 02';
+      nextTripPath = 'Dhamtor Campus → Main Campus';
+      nextTripTime = '4:30 PM';
+      final diffMin = (16.5 * 60).toInt() - (hour * 60 + minute);
+      if (diffMin > 60) {
+        final diffHours = diffMin ~/ 60;
+        final remainingMins = diffMin % 60;
+        leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m';
+      } else {
+        leavesInText = 'Leaves in $diffMin min';
+      }
+    } else {
+      nextTripRoute = 'Route 01';
+      nextTripPath = 'Main Campus → Dhamtor Campus';
+      nextTripTime = '8:00 AM';
+      final diffMin = ((24 + 8) * 60) - (hour * 60 + minute);
+      final diffHours = diffMin ~/ 60;
+      final remainingMins = diffMin % 60;
+      leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m (Tomorrow)';
+    }
+
+    final double occupancyRatio = seatsLeft / totalSeats;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Upcoming Bus',
+                style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
+              ),
+              Text(
+                leavesInText,
+                style: CommutasTextStyles.labelBold.copyWith(
+                  color: CommutasColors.emeraldGreen,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: CommutasShapes.cardDecoration,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: CommutasColors.backgroundGray,
+                      border: Border.all(color: CommutasColors.lineBorder, width: 1),
+                      borderRadius: BorderRadius.zero,
+                    ),
+                    child: const Icon(
+                      Icons.directions_bus_outlined,
+                      color: CommutasColors.primaryNavy,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          nextTripRoute,
+                          style: CommutasTextStyles.labelBold.copyWith(fontSize: 16),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          nextTripPath,
+                          style: CommutasTextStyles.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        nextTripTime,
+                        style: CommutasTextStyles.labelBold.copyWith(fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Scheduled',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: CommutasColors.slateMuted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1, color: CommutasColors.lineBorder),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.people_outline,
+                    color: CommutasColors.slateMuted,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '$seatsLeft / $totalSeats seats left',
+                    style: CommutasTextStyles.bodySmall.copyWith(
+                      color: CommutasColors.slateMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.zero,
+                      child: LinearProgressIndicator(
+                        value: occupancyRatio,
+                        backgroundColor: CommutasColors.lineBorder,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          CommutasColors.emeraldGreen,
+                        ),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: CommutasColors.slateMuted,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -433,6 +798,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onChanged: (val) => _toggleBiometrics(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRoadDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: SizedBox(
+        height: 12,
+        width: double.infinity,
+        child: const CustomPaint(
+          painter: _RoadDividerPainter(),
+        ),
       ),
     );
   }
@@ -781,6 +1159,62 @@ class _TopUpBusPainter extends CustomPainter {
     final double left = 10.0;
     final double right = size.width - 10.0;
 
+    // ──────────────────────────────────────────────────────────
+    // Filled Details (so outlines are layered on top)
+    // ──────────────────────────────────────────────────────────
+    
+    // 1. Solid white fill for the entire body so the bus is opaque and pops over the 3D grid
+    final bodyBasePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), bodyBasePaint);
+
+    // 2. Light green/mint tint fill overlay for the bus body itself
+    final fillPaint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.12)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), fillPaint);
+
+    // 3. Bright emerald green stripe on the side of the bus body
+    final stripePaint = Paint()
+      ..color = CommutasColors.emeraldGreen
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+
+    // 4. Mint tint window fills
+    final windowFillPaint = Paint()
+      ..color = const Color(0xFFE8F5E9)
+      ..style = PaintingStyle.fill;
+    // Front windshield fill
+    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+    // Passenger windows fill
+    for (int i = 0; i < 3; i++) {
+      final double wx = left + 32.0 + i * 20.0;
+      canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), windowFillPaint);
+    }
+
+    // 5. Glowing Headlight Cone (Orange/Yellow Gradient)
+    final lightConePaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(left, bottom - 10),
+        Offset(left - 30, bottom - 10),
+        [
+          Colors.orangeAccent.withOpacity(0.45),
+          Colors.orangeAccent.withOpacity(0.0),
+        ],
+      )
+      ..style = PaintingStyle.fill;
+    final lightPath = Path()
+      ..moveTo(left, bottom - 10)
+      ..lineTo(left - 30, bottom - 22)
+      ..lineTo(left - 30, bottom + 2)
+      ..close();
+    canvas.drawPath(lightPath, lightConePaint);
+
+    // ──────────────────────────────────────────────────────────
+    // Outlines (on top of the fills)
+    // ──────────────────────────────────────────────────────────
+
     // Body
     canvas.drawLine(Offset(left, top), Offset(right, top), paint);
     canvas.drawLine(Offset(right, top), Offset(right, bottom), paint);
@@ -802,7 +1236,7 @@ class _TopUpBusPainter extends CustomPainter {
     // Headlights
     canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
     final rayPaint = Paint()
-      ..color = Colors.orangeAccent.withValues(alpha: 0.8)
+      ..color = Colors.orangeAccent
       ..strokeWidth = 1.5;
     canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
     canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
@@ -817,34 +1251,258 @@ class _TopUpBusPainter extends CustomPainter {
     final double rightWheelX = right - 20.0;
     final double wheelY = bottom + 8.0 - bounce;
 
+    // Wheel 1 (Front)
+    final wheelFill = Paint()
+      ..color = CommutasColors.primaryNavy
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
+    
     final angle = animationValue * 2 * math.pi;
+    final spokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
       Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
-      paint,
+      spokePaint,
     );
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
       Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
-      paint,
+      spokePaint,
     );
 
+    // Wheel 2 (Rear)
+    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
     canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
       Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
-      paint,
+      spokePaint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
       Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
-      paint,
+      spokePaint,
     );
+
+    // ──────────────────────────────────────────────────────────
+    // Exhaust puffs trailing behind the bus (right/rear side)
+    // ──────────────────────────────────────────────────────────
+    final smokePaint = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+    final smokeOutline = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    final double exhaustX = right + 2;
+    final double exhaustY = bottom - 4 + bounce;
+
+    // Puff 1
+    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
+    final double p1R = 4.0 + (animationValue * 3.0);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokeOutline);
+
+    // Puff 2
+    final double p2Val = (animationValue + 0.5) % 1.0;
+    final double p2X = exhaustX + 16.0 + math.cos(p2Val * 2 * math.pi) * 3.0;
+    final double p2Y = exhaustY - 8.0 - (p2Val * 14.0);
+    final double p2R = 3.5 + (p2Val * 4.0);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokePaint);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokeOutline);
+
+    // Puff 3 (fading)
+    final double p3Val = (animationValue + 0.25) % 1.0;
+    final double p3X = exhaustX + 22.0 + math.sin(p3Val * 4 * math.pi) * 2.5;
+    final double p3Y = exhaustY - 12.0 - (p3Val * 16.0);
+    final double p3R = 3.0 + (p3Val * 5.0);
+    final fadedSmoke = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.12 * (1.0 - p3Val))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(p3X, p3Y), p3R, fadedSmoke);
   }
 
   @override
   bool shouldRepaint(covariant _TopUpBusPainter oldDelegate) {
     return oldDelegate.animationValue != animationValue;
   }
+}
+
+// ──────────────────────────────────────────────────────────
+// 3D Perspective Road Grid Background Painter
+// ──────────────────────────────────────────────────────────
+class _ThreeDBackgroundPainter extends CustomPainter {
+  final double animationValue;
+
+  _ThreeDBackgroundPainter({required this.animationValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double horizonY = size.height * 0.45;
+    final double centerX = size.width / 2;
+
+    // 1. Horizon glow (Green neon sky reflection)
+    final glowPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(0, horizonY - 25),
+        Offset(0, horizonY + 15),
+        [
+          CommutasColors.emeraldGreen.withOpacity(0.0),
+          CommutasColors.emeraldGreen.withOpacity(0.24),
+          CommutasColors.emeraldGreen.withOpacity(0.0),
+        ],
+        const [0.0, 0.5, 1.0],
+      );
+    canvas.drawRect(Rect.fromLTWH(0, horizonY - 25, size.width, 40), glowPaint);
+
+    final paint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.26)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    // Horizon line
+    canvas.drawLine(Offset(0, horizonY), Offset(size.width, horizonY), paint);
+
+    // Radiating perspective lines from horizon center to boundaries
+    const int linesCount = 8;
+    for (int i = 0; i <= linesCount; i++) {
+      final double ratio = i / linesCount;
+      final double targetX = ratio * size.width;
+      canvas.drawLine(
+        Offset(centerX, horizonY),
+        Offset(targetX, size.height),
+        paint,
+      );
+    }
+
+    // Moving horizontal grid lines (perspective speed)
+    const int gridLines = 5;
+    for (int i = 0; i < gridLines; i++) {
+      final double progress = (i + animationValue) / gridLines;
+      final double ratio = progress % 1.0;
+      final double y = horizonY + (size.height - horizonY) * math.pow(ratio, 1.8);
+      
+      final double widthRatio = ratio;
+      final double leftX = centerX - (centerX * widthRatio);
+      final double rightX = centerX + ((size.width - centerX) * widthRatio);
+      
+      canvas.drawLine(Offset(leftX, y), Offset(rightX, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThreeDBackgroundPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Tiny hand-drawn bus icon for the Upcoming Bus card
+// ──────────────────────────────────────────────────────────
+class _MiniBusIconPainter extends CustomPainter {
+  const _MiniBusIconPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final double w = size.width;
+    final double h = size.height;
+
+    // Bus body
+    final double bodyTop = h * 0.12;
+    final double bodyBottom = h * 0.72;
+    final double bodyLeft = w * 0.08;
+    final double bodyRight = w * 0.92;
+
+    // Green fill for body
+    final fillPaint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.35)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(bodyLeft, bodyTop, bodyRight, bodyBottom), fillPaint);
+
+    // Body outline
+    canvas.drawRect(Rect.fromLTRB(bodyLeft, bodyTop, bodyRight, bodyBottom), paint);
+
+    // Windshield (front left)
+    final double wsL = bodyLeft + w * 0.06;
+    final double wsT = bodyTop + h * 0.1;
+    final double wsR = bodyLeft + w * 0.28;
+    final double wsB = bodyTop + h * 0.32;
+    canvas.drawRect(Rect.fromLTRB(wsL, wsT, wsR, wsB), paint);
+
+    // Two passenger windows
+    for (int i = 0; i < 2; i++) {
+      final double wx = bodyLeft + w * 0.36 + i * w * 0.24;
+      canvas.drawRect(Rect.fromLTRB(wx, wsT, wx + w * 0.18, wsB), paint);
+    }
+
+    // Green stripe
+    final stripePaint = Paint()
+      ..color = CommutasColors.emeraldGreen
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(bodyLeft + 1, bodyBottom - h * 0.14, bodyRight - 1, bodyBottom - h * 0.06), stripePaint);
+
+    // Wheels
+    final double wheelR = w * 0.08;
+    final double wheelY = bodyBottom + wheelR * 0.6;
+    canvas.drawCircle(Offset(bodyLeft + w * 0.22, wheelY), wheelR, paint);
+    canvas.drawCircle(Offset(bodyRight - w * 0.22, wheelY), wheelR, paint);
+
+    // Headlight ray
+    final rayPaint = Paint()
+      ..color = Colors.orangeAccent
+      ..strokeWidth = 1.2;
+    canvas.drawLine(Offset(bodyLeft, bodyBottom - h * 0.12), Offset(bodyLeft - w * 0.08, bodyBottom - h * 0.18), rayPaint);
+    canvas.drawLine(Offset(bodyLeft, bodyBottom - h * 0.12), Offset(bodyLeft - w * 0.08, bodyBottom - h * 0.06), rayPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniBusIconPainter oldDelegate) => false;
+}
+
+// ──────────────────────────────────────────────────────────
+// Hand-drawn sketchy dashed road center-line divider
+// ──────────────────────────────────────────────────────────
+class _RoadDividerPainter extends CustomPainter {
+  const _RoadDividerPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = CommutasColors.lineBorder
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+
+    final double y = size.height / 2;
+    const double dashWidth = 14.0;
+    const double gapWidth = 10.0;
+    double x = 0;
+
+    while (x < size.width) {
+      // Slight vertical wobble for hand-drawn feel
+      final double wobble = math.sin(x * 0.3) * 0.8;
+      canvas.drawLine(
+        Offset(x, y + wobble),
+        Offset(math.min(x + dashWidth, size.width), y - wobble),
+        paint,
+      );
+      x += dashWidth + gapWidth;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoadDividerPainter oldDelegate) => false;
 }
