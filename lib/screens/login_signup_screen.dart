@@ -1189,6 +1189,13 @@ Row(
   ],
 ),
         const SizedBox(height: 20.0),
+        
+        _buildPrimaryButton(
+          label: 'CREATE ACCOUNT',
+          onPressed: _handleSignUp,
+          disabled: !_isSignUpValid,
+        ),
+        const SizedBox(height: 20.0),
 
         // Redirect back to login
         Row(
