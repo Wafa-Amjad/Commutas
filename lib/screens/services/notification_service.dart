@@ -1,12 +1,13 @@
 import 'package:dio/dio.dart';
 import 'dart:developer' as developer;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'api_interceptor.dart';
 
 class NotificationService {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://commutas.onrender.com',
     headers: {'Content-Type': 'application/json'},
-  ));
+  ))..interceptors.add(ApiInterceptor());
 
   /// Registers the device token with the backend server.
   /// Requires the student's JWT access token.

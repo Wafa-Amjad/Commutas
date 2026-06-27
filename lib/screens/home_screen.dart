@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:io';
+
 import 'dart:ui' as ui;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'dart:math' as math;
 import '../theme.dart';
-import 'services/biometric_service.dart';
 import 'services/wallet_service.dart';
 import 'services/notification_service.dart';
 
@@ -16,7 +16,7 @@ class HomeScreen extends StatefulWidget {
   final String studentRegNo;
   final String? password;
   final String? avatarPath;
-  final bool isAsset;
+  final String avatarType;
 
   const HomeScreen({
     super.key,
@@ -24,7 +24,7 @@ class HomeScreen extends StatefulWidget {
     required this.studentRegNo,
     this.password,
     this.avatarPath,
-    this.isAsset = true,
+    this.avatarType = 'emoji',
   });
 
   @override
@@ -32,9 +32,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
-  final BiometricService _biometricService = BiometricService();
   final WalletService _walletService = WalletService();
-  bool _isBiometricEnabled = false;
   double _walletBalance = 0.0;
   bool _isLoadingBalance = true;
   String? _accessToken;
@@ -44,7 +42,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadBiometricStatus();
     _loadTokenAndBalance();
     _busAnimationController = AnimationController(
       vsync: this,
@@ -102,32 +99,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
   }
 
-  Future<void> _loadBiometricStatus() async {
-    final enabled = await _biometricService.isBiometricsEnabled();
-    if (mounted) {
-      setState(() => _isBiometricEnabled = enabled);
-    }
-  }
-
-  Future<void> _toggleBiometrics() async {
-    final authenticated = await _biometricService.authenticate();
-    if (!authenticated) return;
-
-    if (_isBiometricEnabled) {
-      await _biometricService.disableBiometrics();
-      setState(() => _isBiometricEnabled = false);
-    } else {
-      final success = await _biometricService.enableBiometrics(
-        regNo: widget.studentRegNo,
-        password: widget.password ?? '',
-        name: widget.studentName,
-      );
-      if (mounted && success) {
-        setState(() => _isBiometricEnabled = true);
-      }
-    }
-  }
-
   void _showAddFundsSheet() {
     showModalBottomSheet(
       context: context,
@@ -160,8 +131,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             _buildQuickActions(),
             _buildRoadDivider(),
             _buildUpcomingBusCard(),
-            _buildRoadDivider(),
-            _buildBiometricControl(),
             const SizedBox(height: 24),
           ],
         ),
@@ -241,33 +210,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${_getGreeting()}, ',
-                        style: GoogleFonts.inter(
-                          color: Colors.white70,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${_getGreeting()}, ',
+                              style: GoogleFonts.inter(
+                                color: Colors.white70,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            TextSpan(
+                              text: _formatStudentName(widget.studentName),
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      TextSpan(
-                        text: _formatStudentName(widget.studentName),
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      TextSpan(
-                        text: _getGreetingEmoji(),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      _getGreetingEmoji(),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 12),
@@ -403,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                           width: busWidth,
                           height: busHeight,
                           child: CustomPaint(
-                            painter: _TopUpBusPainter(animationValue: _busAnimationController.value),
+                            painter: TopUpBusPainter(animationValue: _busAnimationController.value),
                           ),
                         ),
                       ],
@@ -768,39 +743,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
   }
 
-  Widget _buildBiometricControl() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: CommutasShapes.cardDecoration,
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: CommutasColors.lightGreenBg,
-              borderRadius: BorderRadius.zero,
-            ),
-            child: const Icon(Icons.fingerprint, color: CommutasColors.emeraldGreen, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Biometric Auth', style: CommutasTextStyles.labelBold),
-                Text('Secure checkout enabled', style: CommutasTextStyles.bodySmall),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: _isBiometricEnabled,
-            activeColor: CommutasColors.emeraldGreen,
-            onChanged: (val) => _toggleBiometrics(),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildRoadDivider() {
     return Padding(
@@ -841,6 +784,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
   late final AnimationController _busController;
 
   final List<int> _quickAmounts = [100, 200, 500, 1000];
+  int? _selectedAmount;
 
   @override
   void initState() {
@@ -860,7 +804,10 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
 
   void _selectQuickAmount(int amount) {
     _amountController.text = amount.toString();
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _selectedAmount = amount;
+    });
   }
 
   Future<void> _initiatePayment() async {
@@ -873,6 +820,10 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
     final amount = double.tryParse(amountText);
     if (amount == null || amount < 10) {
       setState(() => _error = 'Minimum top-up amount is Rs. 10');
+      return;
+    }
+    if (amount > 10000) {
+      setState(() => _error = 'Maximum top-up amount is Rs. 10,000');
       return;
     }
 
@@ -993,6 +944,9 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+            ],
             style: CommutasTextStyles.heading1.copyWith(fontSize: 28),
             decoration: InputDecoration(
               prefixText: 'Rs. ',
@@ -1005,7 +959,30 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
               errorBorder: CommutasShapes.inputErrorBorder,
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
-            onChanged: (_) => setState(() => _error = null),
+            onChanged: (val) {
+              final parsed = int.tryParse(val);
+              
+              if (parsed != null && parsed > 10000) {
+                _amountController.text = '10000';
+                _amountController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _amountController.text.length),
+                );
+                setState(() {
+                  _error = 'Maximum limit is Rs. 10,000';
+                  _selectedAmount = 10000;
+                });
+                return;
+              }
+              
+              setState(() {
+                _error = null;
+                if (parsed != null && _quickAmounts.contains(parsed)) {
+                  _selectedAmount = parsed;
+                } else {
+                  _selectedAmount = null;
+                }
+              });
+            },
           ),
           const SizedBox(height: 16),
 
@@ -1018,8 +995,11 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
                   child: OutlinedButton(
                     onPressed: () => _selectQuickAmount(amount),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: CommutasColors.primaryNavy,
-                      side: const BorderSide(color: CommutasColors.lineBorder),
+                      foregroundColor: _selectedAmount == amount ? Colors.white : CommutasColors.primaryNavy,
+                      backgroundColor: _selectedAmount == amount ? CommutasColors.emeraldGreen : Colors.transparent,
+                      side: BorderSide(
+                        color: _selectedAmount == amount ? CommutasColors.emeraldGreen : CommutasColors.lineBorder,
+                      ),
                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -1061,7 +1041,9 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             height: 48,
             child: TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: CommutasColors.primaryNavy,
+                backgroundColor: (_selectedAmount != null || (_amountController.text.isNotEmpty && double.tryParse(_amountController.text) != null && double.parse(_amountController.text) >= 10 && double.parse(_amountController.text) <= 10000))
+                    ? CommutasColors.emeraldGreen
+                    : CommutasColors.primaryNavy,
                 shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                 padding: EdgeInsets.zero,
               ),
@@ -1104,7 +1086,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             animation: _busController,
             builder: (context, child) {
               return CustomPaint(
-                painter: _TopUpBusPainter(animationValue: _busController.value),
+                painter: TopUpBusPainter(animationValue: _busController.value),
               );
             },
           ),
@@ -1138,10 +1120,10 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
 // ──────────────────────────────────────────────────────────
 // Sketchy bouncing bus painter for the top-up loading state
 // ──────────────────────────────────────────────────────────
-class _TopUpBusPainter extends CustomPainter {
+class TopUpBusPainter extends CustomPainter {
   final double animationValue;
 
-  _TopUpBusPainter({required this.animationValue});
+  TopUpBusPainter({required this.animationValue});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1328,7 +1310,7 @@ class _TopUpBusPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TopUpBusPainter oldDelegate) {
+  bool shouldRepaint(covariant TopUpBusPainter oldDelegate) {
     return oldDelegate.animationValue != animationValue;
   }
 }
@@ -1405,72 +1387,7 @@ class _ThreeDBackgroundPainter extends CustomPainter {
 // ──────────────────────────────────────────────────────────
 // Tiny hand-drawn bus icon for the Upcoming Bus card
 // ──────────────────────────────────────────────────────────
-class _MiniBusIconPainter extends CustomPainter {
-  const _MiniBusIconPainter();
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final double w = size.width;
-    final double h = size.height;
-
-    // Bus body
-    final double bodyTop = h * 0.12;
-    final double bodyBottom = h * 0.72;
-    final double bodyLeft = w * 0.08;
-    final double bodyRight = w * 0.92;
-
-    // Green fill for body
-    final fillPaint = Paint()
-      ..color = CommutasColors.emeraldGreen.withOpacity(0.35)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(bodyLeft, bodyTop, bodyRight, bodyBottom), fillPaint);
-
-    // Body outline
-    canvas.drawRect(Rect.fromLTRB(bodyLeft, bodyTop, bodyRight, bodyBottom), paint);
-
-    // Windshield (front left)
-    final double wsL = bodyLeft + w * 0.06;
-    final double wsT = bodyTop + h * 0.1;
-    final double wsR = bodyLeft + w * 0.28;
-    final double wsB = bodyTop + h * 0.32;
-    canvas.drawRect(Rect.fromLTRB(wsL, wsT, wsR, wsB), paint);
-
-    // Two passenger windows
-    for (int i = 0; i < 2; i++) {
-      final double wx = bodyLeft + w * 0.36 + i * w * 0.24;
-      canvas.drawRect(Rect.fromLTRB(wx, wsT, wx + w * 0.18, wsB), paint);
-    }
-
-    // Green stripe
-    final stripePaint = Paint()
-      ..color = CommutasColors.emeraldGreen
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(bodyLeft + 1, bodyBottom - h * 0.14, bodyRight - 1, bodyBottom - h * 0.06), stripePaint);
-
-    // Wheels
-    final double wheelR = w * 0.08;
-    final double wheelY = bodyBottom + wheelR * 0.6;
-    canvas.drawCircle(Offset(bodyLeft + w * 0.22, wheelY), wheelR, paint);
-    canvas.drawCircle(Offset(bodyRight - w * 0.22, wheelY), wheelR, paint);
-
-    // Headlight ray
-    final rayPaint = Paint()
-      ..color = Colors.orangeAccent
-      ..strokeWidth = 1.2;
-    canvas.drawLine(Offset(bodyLeft, bodyBottom - h * 0.12), Offset(bodyLeft - w * 0.08, bodyBottom - h * 0.18), rayPaint);
-    canvas.drawLine(Offset(bodyLeft, bodyBottom - h * 0.12), Offset(bodyLeft - w * 0.08, bodyBottom - h * 0.06), rayPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MiniBusIconPainter oldDelegate) => false;
-}
 
 // ──────────────────────────────────────────────────────────
 // Hand-drawn sketchy dashed road center-line divider

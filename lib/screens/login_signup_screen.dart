@@ -647,6 +647,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         TextFormField(
           controller: _signInPasswordController,
           obscureText: _obscureSignInPassword,
+          maxLength: 32,
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Enter password',

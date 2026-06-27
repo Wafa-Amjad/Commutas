@@ -76,19 +76,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
   }
 
-  void _setError(String message) {
-    _errorDismissTimer?.cancel();
-    setState(() {
-      _errorMessage = message;
-    });
-    _errorDismissTimer = Timer(const Duration(seconds: 15), () {
-      if (mounted) {
-        setState(() {
-          _errorMessage = null;
-        });
-      }
-    });
-  }
+
 
   // Validate values for reset checklist
   bool get _hasEightChars => _newPasswordController.text.length >= 8;

@@ -2,12 +2,13 @@ import 'package:dio/dio.dart';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'api_interceptor.dart';
 
 class WalletService {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://commutas.onrender.com',
     headers: {'Content-Type': 'application/json'},
-  ));
+  ))..interceptors.add(ApiInterceptor());
 
   /// Initiate a wallet top-up. Returns {transaction_id, checkout_url}.
   Future<Map<String, dynamic>?> initiateTopUp({

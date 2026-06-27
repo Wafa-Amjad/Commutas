@@ -25,7 +25,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   String? _avatarPath;
-  bool _isAsset = true;
+  String _avatarType = 'emoji';
 
   void _onItemTapped(int index) {
     setState(() {
@@ -33,10 +33,10 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  void _onAvatarChanged(String? path, bool isAsset) {
+  void _onAvatarChanged(String? path, String avatarType) {
     setState(() {
       _avatarPath = path;
-      _isAsset = isAsset;
+      _avatarType = avatarType;
     });
   }
 
@@ -48,7 +48,7 @@ class _MainScreenState extends State<MainScreen> {
         studentRegNo: widget.studentRegNo,
         password: widget.lastEnteredPassword,
         avatarPath: _avatarPath,
-        isAsset: _isAsset,
+        avatarType: _avatarType,
       ),
       const ScheduleScreen(),
       const NFCPayScreen(),
@@ -57,8 +57,9 @@ class _MainScreenState extends State<MainScreen> {
         studentName: widget.studentName,
         studentRegNo: widget.studentRegNo,
         initialAvatarPath: _avatarPath,
-        initialIsAsset: _isAsset,
+        initialAvatarType: _avatarType,
         onAvatarChanged: _onAvatarChanged,
+        password: widget.lastEnteredPassword,
       ),
     ];
 
