@@ -277,6 +277,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 builder: (context) => MainScreen(
                   studentName: name,
                   studentRegNo: regNo,
+                  role: 'vehicle',
                 ),
               ),
             );

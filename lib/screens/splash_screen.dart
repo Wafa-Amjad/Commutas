@@ -46,11 +46,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (isSessionActive && mounted) {
       final name = prefs.getString('session_name') ?? '';
       final regNo = prefs.getString('session_reg_no') ?? '';
+      final role = prefs.getString('session_role') ?? 'student';
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) => MainScreen(
             studentName: name,
             studentRegNo: regNo,
+            role: role,
           ),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);

@@ -5,17 +5,24 @@ import 'schedule_screen.dart';
 import 'wallet_screen.dart';
 import 'profile_screen.dart';
 import 'nfc_pay_screen.dart';
+import 'vehicle/vehicle_home_screen.dart';
+import 'vehicle/vehicle_payment_check_screen.dart';
+import 'vehicle/vehicle_history_screen.dart';
+import 'vehicle/vehicle_profile_screen.dart';
+import 'vehicle/vehicle_map_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final String studentName;
   final String studentRegNo;
   final String? lastEnteredPassword;
+  final String role;
 
   const MainScreen({
     super.key,
     required this.studentName,
     required this.studentRegNo,
     this.lastEnteredPassword,
+    this.role = 'student',
   });
 
   @override
@@ -42,26 +49,40 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      HomeScreen(
-        studentName: widget.studentName,
-        studentRegNo: widget.studentRegNo,
-        password: widget.lastEnteredPassword,
-        avatarPath: _avatarPath,
-        avatarType: _avatarType,
-      ),
-      const ScheduleScreen(),
-      const NFCPayScreen(),
-      WalletScreen(studentRegNo: widget.studentRegNo),
-      ProfileScreen(
-        studentName: widget.studentName,
-        studentRegNo: widget.studentRegNo,
-        initialAvatarPath: _avatarPath,
-        initialAvatarType: _avatarType,
-        onAvatarChanged: _onAvatarChanged,
-        password: widget.lastEnteredPassword,
-      ),
-    ];
+    final List<Widget> screens = widget.role == 'vehicle'
+        ? [
+            VehicleHomeScreen(
+              vehicleName: widget.studentName,
+              vehicleRegNo: widget.studentRegNo,
+            ),
+            const VehicleMapScreen(),
+            const VehiclePaymentCheckScreen(),
+            const VehicleHistoryScreen(),
+            VehicleProfileScreen(
+              vehicleName: widget.studentName,
+              vehicleRegNo: widget.studentRegNo,
+            ),
+          ]
+        : [
+            HomeScreen(
+              studentName: widget.studentName,
+              studentRegNo: widget.studentRegNo,
+              password: widget.lastEnteredPassword,
+              avatarPath: _avatarPath,
+              avatarType: _avatarType,
+            ),
+            const ScheduleScreen(),
+            const NFCPayScreen(),
+            WalletScreen(studentRegNo: widget.studentRegNo),
+            ProfileScreen(
+              studentName: widget.studentName,
+              studentRegNo: widget.studentRegNo,
+              initialAvatarPath: _avatarPath,
+              initialAvatarType: _avatarType,
+              onAvatarChanged: _onAvatarChanged,
+              password: widget.lastEnteredPassword,
+            ),
+          ];
 
     return Scaffold(
       body: IndexedStack(
@@ -89,9 +110,9 @@ class _MainScreenState extends State<MainScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
-                _buildNavItem(1, Icons.commute_rounded, 'Schedule'),
+                _buildNavItem(1, widget.role == 'vehicle' ? Icons.navigation_rounded : Icons.commute_rounded, widget.role == 'vehicle' ? 'GPS' : 'Schedule'),
                 _buildNfcNavItem(),
-                _buildNavItem(3, Icons.wallet_rounded, 'Wallet'),
+                _buildNavItem(3, widget.role == 'vehicle' ? Icons.history_rounded : Icons.wallet_rounded, widget.role == 'vehicle' ? 'History' : 'Wallet'),
                 _buildNavItem(4, Icons.person_rounded, 'Profile'),
               ],
             ),
@@ -128,7 +149,7 @@ class _MainScreenState extends State<MainScreen> {
               margin: const EdgeInsets.only(top: 4),
               height: 2,
               width: 12,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: CommutasColors.accentCobalt,
                 borderRadius: BorderRadius.zero,
               ),
@@ -166,7 +187,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              'PAY',
+              widget.role == 'vehicle' ? 'COLLECT' : 'PAY',
               style: TextStyle(
                 color: isSelected ? CommutasColors.accentCobalt : Colors.white,
                 fontSize: 8,
