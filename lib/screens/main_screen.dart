@@ -7,9 +7,7 @@ import 'profile_screen.dart';
 import 'nfc_pay_screen.dart';
 import 'vehicle/vehicle_home_screen.dart';
 import 'vehicle/vehicle_payment_check_screen.dart';
-import 'vehicle/vehicle_history_screen.dart';
 import 'vehicle/vehicle_profile_screen.dart';
-import 'vehicle/vehicle_map_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final String studentName;
@@ -55,9 +53,7 @@ class _MainScreenState extends State<MainScreen> {
               vehicleName: widget.studentName,
               vehicleRegNo: widget.studentRegNo,
             ),
-            const VehicleMapScreen(),
             const VehiclePaymentCheckScreen(),
-            const VehicleHistoryScreen(),
             VehicleProfileScreen(
               vehicleName: widget.studentName,
               vehicleRegNo: widget.studentRegNo,
@@ -108,13 +104,19 @@ class _MainScreenState extends State<MainScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
-                _buildNavItem(1, widget.role == 'vehicle' ? Icons.navigation_rounded : Icons.commute_rounded, widget.role == 'vehicle' ? 'GPS' : 'Schedule'),
-                _buildNfcNavItem(),
-                _buildNavItem(3, widget.role == 'vehicle' ? Icons.history_rounded : Icons.wallet_rounded, widget.role == 'vehicle' ? 'History' : 'Wallet'),
-                _buildNavItem(4, Icons.person_rounded, 'Profile'),
-              ],
+              children: widget.role == 'vehicle'
+                  ? [
+                      _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
+                      _buildNfcNavItem(),
+                      _buildNavItem(2, Icons.person_rounded, 'Profile'),
+                    ]
+                  : [
+                      _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
+                      _buildNavItem(1, Icons.commute_rounded, 'Schedule'),
+                      _buildNfcNavItem(),
+                      _buildNavItem(3, Icons.wallet_rounded, 'Wallet'),
+                      _buildNavItem(4, Icons.person_rounded, 'Profile'),
+                    ],
             ),
           ),
         ),
@@ -160,9 +162,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildNfcNavItem() {
-    final isSelected = _selectedIndex == 2;
+    final targetIndex = widget.role == 'vehicle' ? 1 : 2;
+    final isSelected = _selectedIndex == targetIndex;
     return GestureDetector(
-      onTap: () => _onItemTapped(2),
+      onTap: () => _onItemTapped(targetIndex),
       child: Container(
         height: 52,
         width: 52,

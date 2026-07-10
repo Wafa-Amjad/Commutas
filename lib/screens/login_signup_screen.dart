@@ -202,9 +202,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         return;
       }
     } else if (_activeRole == UserRole.vehicle) {
-      final vehicleReg = _signInVehicleController.text.trim();
-      if (vehicleReg.isEmpty || !RegExp(r'^[A-Z]{3}-\d{4}$').hasMatch(vehicleReg)) {
-        _setError("Enter a valid vehicle registration number, e.g., ABT-4471");
+      final vehicleReg = _signInVehicleController.text.trim().toUpperCase();
+      if (vehicleReg.isEmpty || !RegExp(r'^[A-Z0-9\s-]{1,15}$').hasMatch(vehicleReg)) {
+        _setError("Enter a valid vehicle registration number, e.g., ICT-1234 or AB-4471");
         return;
       }
       if (password.isEmpty) {
@@ -671,14 +671,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16.0),
-
-        // Helper text + action link row
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-
-            if (_activeRole == UserRole.student)
+        if (_activeRole == UserRole.student) ...[
+          const SizedBox(height: 16.0),
+          // Helper text + action link row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
               GestureDetector(
                 onTap: () async {
                   await Navigator.push(
@@ -695,14 +693,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                     decoration: TextDecoration.underline,
                   ),
                 ),
-              )
-            else
-              Text(
-                'Contact your administrator',
-                style: CommutasTextStyles.bodySmall,
               ),
-          ],
-        ),
+            ],
+          ),
+        ],
         const SizedBox(height: 24.0),
 
         // Submit button + Biometrics option (Student only)

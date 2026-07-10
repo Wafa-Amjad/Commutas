@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:dio/dio.dart';
 import '../../theme.dart';
 import 'vehicle_history_screen.dart';
+import 'vehicle_service.dart';
 
 class VehicleHomeScreen extends StatefulWidget {
   final String vehicleName;
@@ -21,8 +23,12 @@ class VehicleHomeScreen extends StatefulWidget {
 
 class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
-  bool _isGpsActive = true;
+  final bool _isGpsActive = true;
   bool _isBusActive = true;
+  final VehicleService _vehicleService = VehicleService();
+
+  String _temp = '34°C';
+  String _weatherEmoji = '☀️';
 
   @override
   void initState() {
@@ -31,12 +37,65 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
       vsync: this,
       duration: const Duration(seconds: 4),
     )..repeat();
+    _loadWeather();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadWeather() async {
+    try {
+      final dio = Dio();
+      final response = await dio.get(
+        'https://api.open-meteo.com/v1/forecast',
+        queryParameters: {
+          'latitude': '33.6844',
+          'longitude': '73.0479',
+          'current_weather': 'true',
+        },
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final current = response.data['current_weather'];
+        if (current != null) {
+          final double tempVal = current['temperature'];
+          final int code = current['weathercode'];
+          if (mounted) {
+            setState(() {
+              _temp = '${tempVal.round()}°C';
+              _weatherEmoji = _getWeatherEmoji(code);
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Keep default fallback
+    }
+  }
+
+  String _getWeatherEmoji(int code) {
+    if (code == 0) return '☀️'; // Clear sky
+    if (code >= 1 && code <= 3) return '🌤️'; // Mainly clear, partly cloudy
+    if (code >= 45 && code <= 48) return '🌫️'; // Fog
+    if (code >= 51 && code <= 67) return '🌧️'; // Drizzle, rain
+    if (code >= 71 && code <= 77) return '❄️'; // Snow
+    if (code >= 80 && code <= 82) return '🌦️'; // Rain showers
+    if (code >= 95 && code <= 99) return '⛈️'; // Thunderstorm
+    return '☀️';
+  }
+
+  String _formatTodayDate() {
+    final now = DateTime.now();
+    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    final weekday = weekdays[now.weekday - 1];
+    final month = months[now.month - 1];
+    final day = now.day;
+    
+    return '$weekday, $month $day';
   }
 
   double _calculateTotalFares() {
@@ -53,9 +112,9 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning, Captain';
-    if (hour < 17) return 'Good Afternoon, Captain';
-    return 'Good Evening, Captain';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
@@ -66,20 +125,27 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            _buildHeaderCard(totalFares, totalPassengers),
-            const SizedBox(height: 16),
-            _buildStationAnimationCard(),
-            _buildRoadDivider(),
-            _buildStatusControls(),
-            _buildRoadDivider(),
-            _buildRoutesAndTimings(),
-            const SizedBox(height: 24),
-          ],
-        ),
+      body: FutureBuilder<Map<String, String>>(
+        future: _vehicleService.fetchVehicleDetails(widget.vehicleRegNo),
+        builder: (context, snapshot) {
+          final driverName = snapshot.data?['driver_name'] ?? 'Captain';
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                _buildGreetingsCard(driverName),
+                const SizedBox(height: 16),
+                _buildVehicleCard(totalFares, totalPassengers),
+                const SizedBox(height: 16),
+                _buildStationAnimationCard(),
+                _buildRoadDivider(),
+                _buildAssignedRoutesCard(),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -114,138 +180,289 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
     );
   }
 
-  Widget _buildHeaderCard(double totalFares, int totalPassengers) {
+  Widget _buildGreetingsCard(String driverName) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: CommutasColors.primaryNavy,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.zero,
+        border: Border.all(color: Colors.grey[200]!, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _getGreeting(),
-                      style: GoogleFonts.inter(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.vehicleName,
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Reg No: ${widget.vehicleRegNo}',
-                      style: GoogleFonts.inter(
-                        color: CommutasColors.emeraldGreen,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: CommutasColors.accentCobalt.withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.directions_bus_rounded,
+              color: CommutasColors.accentCobalt,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _getGreeting(),
+                  style: GoogleFonts.inter(
+                    color: CommutasColors.slateMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isBusActive = !_isBusActive;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _isBusActive ? CommutasColors.emeraldGreen.withOpacity(0.15) : Colors.white10,
-                    borderRadius: BorderRadius.zero,
-                    border: Border.all(
-                      color: _isBusActive ? CommutasColors.emeraldGreen : Colors.white30,
-                      width: 1,
+                const SizedBox(height: 2),
+                Text(
+                  'Captain',
+                  style: GoogleFonts.inter(
+                    color: CommutasColors.primaryNavy,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$driverName !',
+                  style: GoogleFonts.inter(
+                    color: CommutasColors.primaryNavy,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _weatherEmoji,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _temp,
+                    style: GoogleFonts.inter(
+                      color: CommutasColors.primaryNavy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: _isBusActive ? CommutasColors.success : Colors.white30,
-                          shape: BoxShape.rectangle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isBusActive ? 'ON DUTY' : 'OFF DUTY',
-                        style: TextStyle(
-                          color: _isBusActive ? CommutasColors.emeraldGreen : Colors.white60,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _formatTodayDate(),
+                style: GoogleFonts.inter(
+                  color: CommutasColors.slateMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVehicleCard(double totalFares, int totalPassengers) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            CommutasColors.primaryNavy,
+            Color(0xFF282A54),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.zero,
+        boxShadow: [
+          BoxShadow(
+            color: CommutasColors.primaryNavy.withOpacity(0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -20,
+            bottom: -20,
+            child: Icon(
+              Icons.directions_bus_rounded,
+              color: Colors.white.withOpacity(0.04),
+              size: 150,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Today\'s Fares',
-                      style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.vehicleName,
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Reg No: ${widget.vehicleRegNo}',
+                            style: GoogleFonts.inter(
+                              color: CommutasColors.sageGreen,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Rs. ${totalFares.toStringAsFixed(2)}',
-                      style: CommutasTextStyles.heading2.copyWith(color: Colors.white, fontSize: 20),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isBusActive = !_isBusActive;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _isBusActive ? CommutasColors.emeraldGreen.withOpacity(0.2) : Colors.white10,
+                          borderRadius: BorderRadius.zero,
+                          border: Border.all(
+                            color: _isBusActive ? CommutasColors.sageGreen : Colors.white30,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _isBusActive ? CommutasColors.sageGreen : Colors.white54,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _isBusActive ? 'ON DUTY' : 'OFF DUTY',
+                              style: TextStyle(
+                                color: _isBusActive ? CommutasColors.sageGreen : Colors.white70,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: Colors.white.withOpacity(0.2),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 24),
+                const Divider(color: Colors.white12, height: 1, thickness: 1),
+                const SizedBox(height: 20),
+                Row(
                   children: [
-                    Text(
-                      'Total Passengers',
-                      style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.account_balance_wallet_outlined, color: CommutasColors.sageGreen, size: 14),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Today\'s Fares',
+                                style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Rs. ${totalFares.toStringAsFixed(2)}',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$totalPassengers Taps',
-                      style: CommutasTextStyles.heading2.copyWith(color: Colors.white, fontSize: 20),
+                    Container(
+                      width: 1,
+                      height: 48,
+                      color: Colors.white.withOpacity(0.12),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.people_alt_outlined, color: CommutasColors.sageGreen, size: 14),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Total Passengers',
+                                style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '$totalPassengers Taps',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -366,155 +583,150 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
     );
   }
 
-  Widget _buildStatusControls() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: CommutasShapes.cardDecoration,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      color: _isGpsActive ? CommutasColors.lightGreenBg : CommutasColors.slateMuted.withOpacity(0.1),
-                      child: Icon(
-                        Icons.gps_fixed_rounded,
-                        color: _isGpsActive ? CommutasColors.emeraldGreen : CommutasColors.slateMuted,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'GPS Tracking',
-                          style: CommutasTextStyles.labelBold.copyWith(fontSize: 12),
-                        ),
-                        Text(
-                          _isGpsActive ? 'Broadcasting location' : 'GPS Disconnected',
-                          style: CommutasTextStyles.bodySmall.copyWith(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Switch(
-                  value: _isGpsActive,
-                  onChanged: (val) {
-                    setState(() {
-                      _isGpsActive = val;
-                    });
-                  },
-                  activeColor: CommutasColors.emeraldGreen,
-                  activeTrackColor: CommutasColors.lightGreenBg,
-                  inactiveThumbColor: CommutasColors.slateMuted,
-                  inactiveTrackColor: Colors.grey[200],
-                  trackOutlineColor: MaterialStateProperty.resolveWith((states) => Colors.transparent),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildRoutesAndTimings() {
-    return DefaultTabController(
-      length: 2,
+
+  Widget _buildAssignedRoutesCard() {
+    return Container(
+      width: double.infinity,
+      decoration: CommutasShapes.cardDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 12),
-            child: Text(
-              'Bus Routes & Timings',
-              style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
-            ),
-          ),
-          TabBar(
-            indicatorColor: CommutasColors.emeraldGreen,
-            labelColor: CommutasColors.emeraldGreen,
-            unselectedLabelColor: CommutasColors.primaryNavy.withOpacity(0.5),
-            indicatorWeight: 3,
-            indicatorSize: TabBarIndicatorSize.tab,
-            tabs: const [
-              Tab(text: 'Morning Sessions'),
-              Tab(text: 'Evening Sessions'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 280,
-            child: TabBarView(
-              children: [
-                ListView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  children: [
-                    _buildRouteTimingCard('Route 01', 'Main Campus → PMA Road → Dhamtor Campus', '08:00 AM - 08:40 AM'),
-                    const SizedBox(height: 12),
-                    _buildRouteTimingCard('Route 02', 'Main Campus → Fawara Chowk → Dhamtor Campus', '08:00 AM - 08:40 AM'),
-                    const SizedBox(height: 12),
-                    _buildRouteTimingCard('Route 03', 'Main Campus → Murree Road → Dhamtor Campus', '08:00 AM - 08:40 AM'),
-                  ],
-                ),
-                ListView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  children: [
-                    _buildRouteTimingCard('Route 01', 'Dhamtor Campus → PMA Road → Main Campus', '01:30 PM - 02:10 PM'),
-                    const SizedBox(height: 12),
-                    _buildRouteTimingCard('Route 02', 'Dhamtor Campus → Fawara Chowk → Main Campus', '04:30 PM - 05:10 PM'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRouteTimingCard(String route, String path, String timing) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: CommutasShapes.cardDecoration,
-      child: Row(
-        children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            color: CommutasColors.primaryNavy,
-            child: Text(
-              route,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: Colors.grey[50],
+            child: Row(
               children: [
+                const Icon(Icons.assignment_turned_in_rounded, size: 16, color: CommutasColors.primaryNavy),
+                const SizedBox(width: 8),
                 Text(
-                  path,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: CommutasColors.primaryNavy),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  timing,
-                  style: const TextStyle(color: CommutasColors.slateMuted, fontSize: 11),
+                  'TODAY\'S ASSIGNED RUNS',
+                  style: CommutasTextStyles.labelBold.copyWith(
+                    fontSize: 10,
+                    color: CommutasColors.primaryNavy,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: CommutasColors.lineBorder),
+          const Divider(height: 1, color: CommutasColors.lineBorder),
+          FutureBuilder<List<Map<String, String>>>(
+            future: _vehicleService.fetchAssignedRoutes(widget.vehicleRegNo),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+                    ),
+                  ),
+                );
+              } else if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Error loading assigned runs',
+                    style: TextStyle(color: CommutasColors.danger, fontSize: 12),
+                  ),
+                );
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    'No assigned runs found for today.',
+                    style: TextStyle(color: CommutasColors.slateMuted, fontSize: 12),
+                  ),
+                );
+              }
+
+              final routes = snapshot.data!;
+              return Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(1.2),
+                    1: FlexColumnWidth(2.8),
+                    2: FlexColumnWidth(2.0),
+                  },
+                  border: TableBorder(
+                    horizontalInside: BorderSide(
+                      color: CommutasColors.lineBorder.withOpacity(0.4),
+                      width: 1,
+                    ),
+                  ),
+                  children: [
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Text('SESSION', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Text('ROUTE PATH', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Text('TIMINGS', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        ),
+                      ],
+                    ),
+                    ...routes.map((run) {
+                      return TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10.0),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  color: run['session'] == 'Morning' ? CommutasColors.lightGreenBg : CommutasColors.primaryNavy.withOpacity(0.08),
+                                  child: Text(
+                                    run['session']!.toUpperCase(),
+                                    style: TextStyle(
+                                      color: run['session'] == 'Morning' ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 8,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  run['route']!,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  run['path']!,
+                                  style: const TextStyle(fontSize: 9, color: CommutasColors.slateMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10.0),
+                            child: Text(
+                              run['timing']!,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
