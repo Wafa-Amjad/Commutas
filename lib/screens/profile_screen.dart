@@ -12,6 +12,7 @@ import 'login_signup_screen.dart';
 import 'services/route_service.dart';
 import 'services/auth_service.dart';
 import 'dart:developer' as developer;
+import 'package:dio/dio.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String studentName;
@@ -175,9 +176,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } catch (e) {
         developer.log('Profile image upload failed: $e', name: 'ProfileScreen');
+        String errorMsg = 'Failed to upload profile picture. Please try again.';
+        if (e is DioException) {
+          if (e.type == DioExceptionType.connectionTimeout || 
+              e.type == DioExceptionType.receiveTimeout || 
+              e.type == DioExceptionType.connectionError) {
+            errorMsg = 'No internet connection. Please check your network and try again.';
+          } else if (e.response?.data?['detail'] != null) {
+            errorMsg = e.response!.data['detail'].toString();
+          }
+        }
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to upload profile picture. Please try again.')),
+            SnackBar(content: Text(errorMsg)),
           );
         }
       } finally {
@@ -215,9 +226,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       developer.log('Profile image deletion failed: $e', name: 'ProfileScreen');
+      String errorMsg = 'Failed to remove profile picture. Please try again.';
+      if (e is DioException) {
+        if (e.type == DioExceptionType.connectionTimeout || 
+            e.type == DioExceptionType.receiveTimeout || 
+            e.type == DioExceptionType.connectionError) {
+          errorMsg = 'No internet connection. Please check your network and try again.';
+        } else if (e.response?.data?['detail'] != null) {
+          errorMsg = e.response!.data['detail'].toString();
+        }
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to remove profile picture. Please try again.')),
+          SnackBar(content: Text(errorMsg)),
         );
       }
     } finally {

@@ -20,8 +20,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
   String? _errorMessage;
   String? _preferredRouteId;
 
-  final TextEditingController _morningSearchCtrl = TextEditingController();
-  final TextEditingController _eveningSearchCtrl = TextEditingController();
   String _morningSearchQuery = '';
   String _eveningSearchQuery = '';
   String? _morningTimeFilter;
@@ -37,8 +35,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
   @override
   void dispose() {
     _tabController.dispose();
-    _morningSearchCtrl.dispose();
-    _eveningSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -101,6 +97,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
     return times;
   }
 
+  List<String> _getUniqueRoutes(List<Map<String, dynamic>> schedules) {
+    final routes = schedules
+        .map((s) => s['route_name'] as String? ?? '')
+        .where((r) => r.isNotEmpty)
+        .toSet()
+        .toList();
+    routes.sort();
+    return routes;
+  }
+
   String _calculateArrivalTime(String dep) {
     try {
       final parts = dep.split(':');
@@ -143,12 +149,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
   Widget _buildFilterHeader({
     required bool isMorning,
     required List<Map<String, dynamic>> originalSchedules,
-    required String searchQuery,
+    required String selectedRoute,
     required String? selectedTime,
-    required TextEditingController controller,
-    required ValueChanged<String> onSearchChanged,
+    required ValueChanged<String> onRouteFilterChanged,
     required ValueChanged<String?> onTimeFilterChanged,
   }) {
+    final uniqueRoutes = _getUniqueRoutes(originalSchedules);
     final uniqueTimes = _getUniqueTimes(originalSchedules);
 
     return Container(
@@ -157,92 +163,93 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Route Dropdown
           Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             decoration: BoxDecoration(
               color: CommutasColors.backgroundGray,
               borderRadius: BorderRadius.zero,
               border: Border.all(color: CommutasColors.lineBorder),
             ),
-            child: TextField(
-              controller: controller,
-              onChanged: onSearchChanged,
-              style: CommutasTextStyles.bodyMedium,
-              decoration: InputDecoration(
-                hintText: 'Search route or area...',
-                hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
-                prefixIcon: const Icon(Icons.search_rounded, color: CommutasColors.slateMuted, size: 20),
-                suffixIcon: searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, color: CommutasColors.slateMuted, size: 18),
-                        onPressed: () {
-                          controller.clear();
-                          onSearchChanged('');
-                        },
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: selectedRoute.isEmpty ? 'All Routes' : selectedRoute,
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down_rounded, color: CommutasColors.primaryNavy),
+                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.primaryNavy),
+                dropdownColor: Colors.white,
+                items: [
+                  DropdownMenuItem<String>(
+                    value: 'All Routes',
+                    child: Text(
+                      'All Routes',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  ...uniqueRoutes.map((route) => DropdownMenuItem<String>(
+                        value: route,
+                        child: Text(
+                          route,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: CommutasTextStyles.bodyMedium,
+                        ),
+                      )),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    onRouteFilterChanged(value == 'All Routes' ? '' : value);
+                  }
+                },
               ),
             ),
           ),
-          if (uniqueTimes.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ChoiceChip(
-                    selected: selectedTime == null,
-                    label: Text(
-                      'All Times',
-                      style: TextStyle(
-                        color: selectedTime == null ? Colors.white : CommutasColors.primaryNavy,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+          
+          // Time Dropdown - ONLY for Evening
+          if (!isMorning && uniqueTimes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              decoration: BoxDecoration(
+                color: CommutasColors.backgroundGray,
+                borderRadius: BorderRadius.zero,
+                border: Border.all(color: CommutasColors.lineBorder),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedTime ?? 'All Times',
+                  isExpanded: true,
+                  icon: const Icon(Icons.arrow_drop_down_rounded, color: CommutasColors.primaryNavy),
+                  style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.primaryNavy),
+                  dropdownColor: Colors.white,
+                  items: [
+                    DropdownMenuItem<String>(
+                      value: 'All Times',
+                      child: Text(
+                        'All Times',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ),
-                    backgroundColor: CommutasColors.backgroundGray,
-                    selectedColor: CommutasColors.primaryNavy,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: const RoundedRectangleBorder(
-                      side: BorderSide(color: CommutasColors.lineBorder),
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    showCheckmark: false,
-                    onSelected: (selected) {
-                      if (selected) onTimeFilterChanged(null);
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  ...uniqueTimes.map((time) {
-                    final isSelected = selectedTime == time;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: ChoiceChip(
-                        selected: isSelected,
-                        label: Text(
-                          time,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : CommutasColors.primaryNavy,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                    ...uniqueTimes.map((time) => DropdownMenuItem<String>(
+                          value: time,
+                          child: Text(
+                            time,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: CommutasTextStyles.bodyMedium,
                           ),
-                        ),
-                        backgroundColor: CommutasColors.backgroundGray,
-                        selectedColor: CommutasColors.emeraldGreen,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        shape: const RoundedRectangleBorder(
-                          side: BorderSide(color: CommutasColors.lineBorder),
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        showCheckmark: false,
-                        onSelected: (selected) {
-                          onTimeFilterChanged(selected ? time : null);
-                        },
-                      ),
-                    );
-                  }),
-                ],
+                        )),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      onTimeFilterChanged(value == 'All Times' ? null : value);
+                    }
+                  },
+                ),
               ),
             ),
           ],
@@ -320,25 +327,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
 
     final query = isMorning ? _morningSearchQuery : _eveningSearchQuery;
     final selectedTime = isMorning ? _morningTimeFilter : _eveningTimeFilter;
-    final ctrl = isMorning ? _morningSearchCtrl : _eveningSearchCtrl;
 
     final filteredSchedules = schedules.where((schedule) {
       final routeName = (schedule['route_name'] as String? ?? '').toLowerCase();
-      final routeId = (schedule['route_id'] as String? ?? '').toLowerCase();
-      final queryText = query.trim().toLowerCase();
+      final selectedRouteName = query.trim().toLowerCase();
       
-      bool matchesSearch = true;
-      if (queryText.isNotEmpty) {
-        matchesSearch = routeName.contains(queryText) || routeId.contains(queryText);
+      bool matchesRoute = true;
+      if (selectedRouteName.isNotEmpty) {
+        matchesRoute = routeName == selectedRouteName;
       }
 
       bool matchesTime = true;
-      if (selectedTime != null) {
+      if (!isMorning && selectedTime != null) {
         final formattedTime = _formatDepartureTime(schedule['departure_time'] as String? ?? '00:00:00');
         matchesTime = formattedTime == selectedTime;
       }
 
-      return matchesSearch && matchesTime;
+      return matchesRoute && matchesTime;
     }).toList();
 
     return Column(
@@ -346,10 +351,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
         _buildFilterHeader(
           isMorning: isMorning,
           originalSchedules: schedules,
-          searchQuery: query,
+          selectedRoute: query,
           selectedTime: selectedTime,
-          controller: ctrl,
-          onSearchChanged: (val) {
+          onRouteFilterChanged: (val) {
             setState(() {
               if (isMorning) {
                 _morningSearchQuery = val;
