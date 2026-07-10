@@ -241,6 +241,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           await prefs.setString('session_name', fullName);
           await prefs.setString('session_reg_no', regNo);
           await prefs.setString('session_role', 'student');
+          final preferredRouteId = response['student']?['preferred_route_id'];
+          if (preferredRouteId != null) {
+            await prefs.setString('session_preferred_route_id', preferredRouteId);
+          } else {
+            await prefs.remove('session_preferred_route_id');
+          }
           final token = response['access_token'];
           if (token != null) {
             await prefs.setString('session_token', token);

@@ -66,6 +66,7 @@ class _MainScreenState extends State<MainScreen> {
               password: widget.lastEnteredPassword,
               avatarPath: _avatarPath,
               avatarType: _avatarType,
+              onNavigateToTab: _onItemTapped,
             ),
             const ScheduleScreen(),
             const NFCPayScreen(),

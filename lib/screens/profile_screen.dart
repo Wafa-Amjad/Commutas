@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'services/biometric_service.dart';
 import 'reset_password_screen.dart';
 import 'login_signup_screen.dart';
+import 'services/route_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String studentName;
@@ -36,7 +37,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   final BiometricService _biometricService = BiometricService();
   bool _isBiometricEnabled = false;
-  bool _pushNotificationsEnabled = true;
+
+  String? _accessToken;
+  String? _preferredRouteId;
+  String? _preferredRouteName;
+  List<Map<String, dynamic>> _availableRoutes = [];
 
   @override
   void initState() {
@@ -44,6 +49,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _avatarPath = widget.initialAvatarPath;
     _avatarType = widget.initialAvatarType;
     _loadBiometricStatus();
+    _loadPreferences().then((_) {
+      _fetchRoutesAndResolve();
+    });
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('session_token') ?? '';
+    final preferredRouteId = prefs.getString('session_preferred_route_id');
+    
+    if (mounted) {
+      setState(() {
+        _accessToken = token;
+        _preferredRouteId = preferredRouteId;
+      });
+    }
+  }
+
+  Future<void> _fetchRoutesAndResolve() async {
+    if (_accessToken == null || _accessToken!.isEmpty) return;
+    final routeService = RouteService();
+    final routes = await routeService.fetchRoutes(token: _accessToken!);
+    if (routes.isNotEmpty && mounted) {
+      setState(() {
+        _availableRoutes = routes;
+      });
+      _resolveRouteName();
+    }
+  }
+
+  void _resolveRouteName() {
+    if (_preferredRouteId == null || _availableRoutes.isEmpty) return;
+    final match = _availableRoutes.firstWhere(
+      (r) => r['id'] == _preferredRouteId,
+      orElse: () => {},
+    );
+    if (match.isNotEmpty && mounted) {
+      setState(() {
+        _preferredRouteName = match['name'];
+      });
+    }
   }
 
   Future<void> _loadBiometricStatus() async {
@@ -93,15 +139,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('My Profile'),
         elevation: 0,
         backgroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: CommutasColors.primaryNavy),
-            onPressed: () {
-              // Notification action
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -213,7 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  widget.studentName,
+                                  _formatStudentName(widget.studentName),
                                   style: CommutasTextStyles.heading1.copyWith(
                                     fontSize: 20,
                                     color: Colors.white,
@@ -245,47 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 32),
-                
-                // Thin Divider
-                const Divider(height: 1, color: Colors.white24, thickness: 1),
-                const SizedBox(height: 16),
-                
-                // Bottom Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'NFC Enabled',
-                          style: CommutasTextStyles.labelBold.copyWith(color: Colors.white, fontSize: 12),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Contactless Pass',
-                          style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Valid Until',
-                          style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 10),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '31 Dec 2026', // dynamic in future
-                          style: CommutasTextStyles.labelBold.copyWith(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 
                 // Bottom Label
                 Center(
@@ -315,6 +312,126 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  String _formatStudentName(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '';
+    if (parts.length == 1) return parts[0];
+    final firstName = parts[0];
+    final lastPart = parts[parts.length - 1];
+    if (lastPart.isEmpty) return firstName;
+    return '$firstName ${lastPart[0]}.';
+  }
+
+  void _showRouteSelectionDialog() {
+    if (_availableRoutes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loading routes from server... Please wait.')),
+      );
+      _fetchRoutesAndResolve();
+      return;
+    }
+
+    final morningRoutes = _availableRoutes.where((route) {
+      final startLoc = route['start_location'] as String? ?? '';
+      final rId = route['id'] as String? ?? '';
+      return startLoc.toLowerCase().contains('main') && !rId.endsWith('-REV');
+    }).toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Select Preferred Route',
+                  style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: morningRoutes.length,
+                  itemBuilder: (context, index) {
+                    final route = morningRoutes[index];
+                    final routeId = route['id'];
+                    final routeName = route['name'];
+                    final isSelected = routeId == _preferredRouteId;
+
+                    return ListTile(
+                      title: Text(
+                        routeName,
+                        style: CommutasTextStyles.bodyMedium.copyWith(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
+                        ),
+                      ),
+                      leading: Icon(
+                        Icons.directions_bus_filled,
+                        color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.slateMuted,
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_circle, color: CommutasColors.emeraldGreen)
+                          : null,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _updatePreferredRoute(routeId);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updatePreferredRoute(String routeId) async {
+    if (_accessToken == null || _accessToken!.isEmpty) return;
+
+    final routeService = RouteService();
+    final success = await routeService.savePreferredRoute(
+      token: _accessToken!,
+      routeId: routeId,
+    );
+
+    if (success) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('session_preferred_route_id', routeId);
+      
+      if (mounted) {
+        setState(() {
+          _preferredRouteId = routeId;
+        });
+      }
+      _resolveRouteName();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Preferred route updated successfully.')),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update preferred route. Please try again.')),
+        );
+      }
+    }
+  }
+
   Widget _buildTransitPreferencesSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,47 +446,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               _buildClickableRow(
                 icon: Icons.directions_bus,
-                title: 'Preferred Route',
-                subtitle: 'Route C-2 (Main → Dhamtor)',
-                onTap: () {
-                  // Navigate to route selection
-                },
-              ),
-              const Divider(height: 1, color: CommutasColors.lineBorder, indent: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: CommutasColors.lightGreenBg,
-                        borderRadius: BorderRadius.zero,
-                      ),
-                      child: const Icon(Icons.notifications_active, color: CommutasColors.emeraldGreen, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Push Notifications', style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 2),
-                          Text('Get alerts for trips and updates', style: CommutasTextStyles.bodySmall),
-                        ],
-                      ),
-                    ),
-                    Switch.adaptive(
-                      value: _pushNotificationsEnabled,
-                      activeColor: CommutasColors.emeraldGreen,
-                      onChanged: (val) {
-                        setState(() {
-                          _pushNotificationsEnabled = val;
-                        });
-                      },
-                    ),
-                  ],
-                ),
+                title: 'Configure Preferred Route',
+                subtitle: null,
+                onTap: _showRouteSelectionDialog,
               ),
             ],
           ),

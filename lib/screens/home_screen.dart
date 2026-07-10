@@ -10,6 +10,9 @@ import 'dart:math' as math;
 import '../theme.dart';
 import 'services/wallet_service.dart';
 import 'services/notification_service.dart';
+import 'services/route_service.dart';
+import 'dart:developer' as developer;
+import 'reset_password_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String studentName;
@@ -17,6 +20,7 @@ class HomeScreen extends StatefulWidget {
   final String? password;
   final String? avatarPath;
   final String avatarType;
+  final Function(int)? onNavigateToTab;
 
   const HomeScreen({
     super.key,
@@ -25,6 +29,7 @@ class HomeScreen extends StatefulWidget {
     this.password,
     this.avatarPath,
     this.avatarType = 'emoji',
+    this.onNavigateToTab,
   });
 
   @override
@@ -37,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   bool _isLoadingBalance = true;
   String? _accessToken;
   late final AnimationController _busAnimationController;
+
+  String? _preferredRouteId;
+  Map<String, dynamic>? _preferredRoute;
+  bool _isLoadingRoute = true;
+  String? _lastCheckedRouteId;
 
   @override
   void initState() {
@@ -74,17 +84,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   Future<void> _loadTokenAndBalance() async {
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('session_token');
+    _preferredRouteId = prefs.getString('session_preferred_route_id');
+    _lastCheckedRouteId = _preferredRouteId;
+
     if (_accessToken != null) {
       await _fetchBalance();
-      // Proactively check status upon dashboard load in case a payment succeeded offline
       _checkPendingTransactions();
-      
-      // Auto-register device token for push notifications
       NotificationService().autoRegisterToken(_accessToken!);
+
+      await _fetchPreferredRouteDetails();
     } else {
       if (mounted) {
-        setState(() => _isLoadingBalance = false);
+        setState(() {
+          _isLoadingBalance = false;
+          _isLoadingRoute = false;
+        });
       }
+    }
+  }
+
+  Future<void> _fetchPreferredRouteDetails() async {
+    if (_accessToken == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    _preferredRouteId = prefs.getString('session_preferred_route_id');
+
+    if (_preferredRouteId == null || _preferredRouteId!.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _preferredRoute = null;
+          _isLoadingRoute = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isLoadingRoute = true);
+    }
+
+    try {
+      final routeService = RouteService();
+      final routes = await routeService.fetchRoutes(token: _accessToken!);
+      final match = routes.firstWhere(
+        (r) => r['id'] == _preferredRouteId,
+        orElse: () => {},
+      );
+
+      if (mounted) {
+        setState(() {
+          _preferredRoute = match.isNotEmpty ? match : null;
+          _isLoadingRoute = false;
+        });
+      }
+    } catch (e) {
+      developer.log('Error fetching preferred route details: $e', name: 'HomeScreen');
+      if (mounted) {
+        setState(() => _isLoadingRoute = false);
+      }
+    }
+  }
+
+  Future<void> _checkPreferredRouteUpdate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentId = prefs.getString('session_preferred_route_id');
+    if (currentId != _lastCheckedRouteId) {
+      _lastCheckedRouteId = currentId;
+      await _fetchPreferredRouteDetails();
     }
   }
 
@@ -117,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   @override
   Widget build(BuildContext context) {
+    _checkPreferredRouteUpdate();
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: _buildAppBar(),
@@ -130,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             _buildRoadDivider(),
             _buildQuickActions(),
             _buildRoadDivider(),
-            _buildUpcomingBusCard(),
+            _buildPreferredRouteCard(),
             const SizedBox(height: 24),
           ],
         ),
@@ -158,15 +225,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: CommutasColors.primaryNavy),
-          onPressed: () {
-            // Notification action placeholder
-          },
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 
@@ -442,67 +500,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Widget _buildQuickActions() {
     final List<Map<String, dynamic>> items = [
-      {'icon': Icons.add_card_rounded, 'label': 'Top Up', 'action': _showAddFundsSheet},
       {
         'icon': Icons.receipt_long_rounded,
         'label': 'Transactions',
         'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select the Wallet tab at the bottom to view transactions.')),
-          );
-        }
-      },
-      {
-        'icon': Icons.directions_bus_rounded,
-        'label': 'My Trips',
-        'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('My Trips is currently under development.')),
-          );
-        }
-      },
-      {
-        'icon': Icons.credit_card_rounded,
-        'label': 'Bus Passes',
-        'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Bus Passes is currently under development.')),
-          );
-        }
-      },
-      {
-        'icon': Icons.map_rounded,
-        'label': 'Routes',
-        'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select the Schedule tab at the bottom to view routes.')),
-          );
+          if (widget.onNavigateToTab != null) {
+            widget.onNavigateToTab!(3);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select the Wallet tab at the bottom to view transactions.')),
+            );
+          }
         }
       },
       {
         'icon': Icons.support_agent_rounded,
         'label': 'Support',
-        'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Support is currently under development.')),
-          );
-        }
+        'action': _launchEmailSupport,
       },
       {
-        'icon': Icons.campaign_rounded,
-        'label': 'Announcements',
+        'icon': Icons.lock_reset_rounded,
+        'label': 'Change Password',
         'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Announcements is currently under development.')),
-          );
-        }
-      },
-      {
-        'icon': Icons.more_horiz_rounded,
-        'label': 'More',
-        'action': () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('More options are currently under development.')),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ResetPasswordScreen(),
+            ),
           );
         }
       },
@@ -518,22 +542,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
           ),
         ),
-        SizedBox(
-          height: 90,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                  left: index == 0 ? 0 : 8,
-                  right: index == items.length - 1 ? 0 : 8,
-                ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: items.map((item) {
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: GestureDetector(
                   onTap: item['action'] as VoidCallback,
                   child: Container(
-                    width: 90,
+                    height: 90,
                     decoration: CommutasShapes.cardDecoration,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -553,68 +571,193 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
   }
 
-  Widget _buildUpcomingBusCard() {
-    final now = DateTime.now();
-    final hour = now.hour;
-    final minute = now.minute;
-    final double timeInDouble = hour + minute / 60.0;
+  Future<void> _launchEmailSupport() async {
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: 'mobishahzaib@gmail.com',
+      query: _encodeQueryParameters(<String, String>{
+        'subject': 'Commutas App Support Request',
+      }),
+    );
 
-    String nextTripRoute;
-    String nextTripPath;
-    String nextTripTime;
-    String leavesInText;
-    int seatsLeft = 28;
-    int totalSeats = 50;
-
-    if (timeInDouble < 8.0) {
-      nextTripRoute = 'Route 01';
-      nextTripPath = 'Main Campus → Dhamtor Campus';
-      nextTripTime = '8:00 AM';
-      final diffMin = (8 * 60) - (hour * 60 + minute);
-      leavesInText = 'Leaves in $diffMin min';
-    } else if (timeInDouble < 13.5) {
-      nextTripRoute = 'Route 01';
-      nextTripPath = 'Dhamtor Campus → Main Campus';
-      nextTripTime = '1:30 PM';
-      final diffMin = (13.5 * 60).toInt() - (hour * 60 + minute);
-      if (diffMin > 60) {
-        final diffHours = diffMin ~/ 60;
-        final remainingMins = diffMin % 60;
-        leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m';
-      } else {
-        leavesInText = 'Leaves in $diffMin min';
+    try {
+      await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      developer.log('Error launching email support: $e', name: 'HomeScreen');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open email client. Please email mobishahzaib@gmail.com directly.')),
+        );
       }
-    } else if (timeInDouble < 16.5) {
-      nextTripRoute = 'Route 02';
-      nextTripPath = 'Dhamtor Campus → Main Campus';
-      nextTripTime = '4:30 PM';
-      final diffMin = (16.5 * 60).toInt() - (hour * 60 + minute);
-      if (diffMin > 60) {
-        final diffHours = diffMin ~/ 60;
-        final remainingMins = diffMin % 60;
-        leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m';
-      } else {
-        leavesInText = 'Leaves in $diffMin min';
-      }
-    } else {
-      nextTripRoute = 'Route 01';
-      nextTripPath = 'Main Campus → Dhamtor Campus';
-      nextTripTime = '8:00 AM';
-      final diffMin = ((24 + 8) * 60) - (hour * 60 + minute);
-      final diffHours = diffMin ~/ 60;
-      final remainingMins = diffMin % 60;
-      leavesInText = 'Leaves in ${diffHours}h ${remainingMins}m (Tomorrow)';
     }
+  }
 
-    final double occupancyRatio = seatsLeft / totalSeats;
+  String? _encodeQueryParameters(Map<String, String> params) {
+    return params.entries
+        .map((MapEntry<String, String> e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+  }
+
+  Widget _buildPreferredRouteCard() {
+    final bool isConfigured = _preferredRoute != null;
+
+    Widget cardContent;
+
+    if (_isLoadingRoute) {
+      cardContent = const SizedBox(
+        height: 124,
+        child: Center(
+          child: CircularProgressIndicator(
+            color: CommutasColors.emeraldGreen,
+          ),
+        ),
+      );
+    } else if (!isConfigured) {
+      cardContent = Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: CommutasColors.backgroundGray,
+                  border: Border.all(color: CommutasColors.lineBorder, width: 1),
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: const Icon(
+                  Icons.bus_alert_outlined,
+                  color: CommutasColors.danger,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'No Preferred Route',
+                      style: CommutasTextStyles.labelBold.copyWith(fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'No route preference set in your profile',
+                      style: CommutasTextStyles.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: CommutasColors.lineBorder),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(
+                Icons.info_outline_rounded,
+                color: CommutasColors.slateMuted,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Configure route preference in the Profile tab',
+                style: CommutasTextStyles.bodySmall.copyWith(
+                  color: CommutasColors.slateMuted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    } else {
+      final routeId = _preferredRoute!['id'] as String? ?? '';
+      final startLocation = _preferredRoute!['start_location'] as String? ?? '';
+      final via = _preferredRoute!['via'] as String? ?? '';
+      final endLocation = _preferredRoute!['end_location'] as String? ?? '';
+
+      cardContent = Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: CommutasColors.backgroundGray,
+                  border: Border.all(color: CommutasColors.lineBorder, width: 1),
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: const Icon(
+                  Icons.directions_bus_outlined,
+                  color: CommutasColors.primaryNavy,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          startLocation,
+                          style: CommutasTextStyles.labelBold.copyWith(
+                            fontSize: 14,
+                            color: CommutasColors.primaryNavy,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 14,
+                          color: CommutasColors.emeraldGreen,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          endLocation,
+                          style: CommutasTextStyles.labelBold.copyWith(
+                            fontSize: 14,
+                            color: CommutasColors.primaryNavy,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'via $via',
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.slateMuted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: CommutasColors.lineBorder),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+            ],
+          ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -625,13 +768,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Upcoming Bus',
+                'Preferred Route',
                 style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
               ),
               Text(
-                leavesInText,
+                isConfigured ? 'Configured' : 'Not Set',
                 style: CommutasTextStyles.labelBold.copyWith(
-                  color: CommutasColors.emeraldGreen,
+                  color: isConfigured ? CommutasColors.emeraldGreen : CommutasColors.danger,
                   fontSize: 12,
                 ),
               ),
@@ -641,103 +784,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         Container(
           padding: const EdgeInsets.all(16),
           decoration: CommutasShapes.cardDecoration,
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: CommutasColors.backgroundGray,
-                      border: Border.all(color: CommutasColors.lineBorder, width: 1),
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    child: const Icon(
-                      Icons.directions_bus_outlined,
-                      color: CommutasColors.primaryNavy,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          nextTripRoute,
-                          style: CommutasTextStyles.labelBold.copyWith(fontSize: 16),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          nextTripPath,
-                          style: CommutasTextStyles.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        nextTripTime,
-                        style: CommutasTextStyles.labelBold.copyWith(fontSize: 14),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Scheduled',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: CommutasColors.slateMuted,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(height: 1, color: CommutasColors.lineBorder),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.people_outline,
-                    color: CommutasColors.slateMuted,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$seatsLeft / $totalSeats seats left',
-                    style: CommutasTextStyles.bodySmall.copyWith(
-                      color: CommutasColors.slateMuted,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.zero,
-                      child: LinearProgressIndicator(
-                        value: occupancyRatio,
-                        backgroundColor: CommutasColors.lineBorder,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          CommutasColors.emeraldGreen,
-                        ),
-                        minHeight: 6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: CommutasColors.slateMuted,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ],
-          ),
+          child: cardContent,
         ),
       ],
     );
