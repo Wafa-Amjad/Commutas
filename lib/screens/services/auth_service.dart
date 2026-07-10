@@ -73,5 +73,43 @@ class AuthService {
       rethrow;
     }
   }
+
+  // 4. UPLOAD AVATAR METHOD
+  Future<String?> uploadAvatar({
+    required String token,
+    required List<int> imageBytes,
+    required String fileName,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          imageBytes,
+          filename: fileName,
+        ),
+      });
+
+      final response = await _dio.post(
+        '/auth/avatar',
+        data: formData,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'multipart/form-data',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return response.data['avatar_url'] as String?;
+      }
+      return null;
+    } on DioException catch (e) {
+      developer.log(
+        'Upload Avatar Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
+      rethrow;
+    }
+  }
 }
 

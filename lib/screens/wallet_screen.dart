@@ -137,17 +137,6 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
               border: Border.all(color: Colors.white12),
             ),
             child: IconButton(
-              icon: const Icon(Icons.file_download_outlined, color: CommutasColors.primaryNavy),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report Generation is currently under development.')));
-              },
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white12),
-            ),
-            child: IconButton(
               icon: const Icon(Icons.refresh_rounded, color: CommutasColors.primaryNavy),
               onPressed: () {
                 setState(() {
@@ -177,9 +166,7 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                 ),
                 child: TopUpActionPanel(onTap: _showTopUpSheet),
               ),
-              const SizedBox(height: 32),
-              _buildTodaysOverview(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Text(
                 'Transaction History', 
                 style: CommutasTextStyles.labelBold,
@@ -336,94 +323,6 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
     );
   }
 
-  Widget _buildTodaysOverview() {
-    double totalSpent = 0.0;
-    int totalTrips = 0;
-    
-    final now = DateTime.now();
-    for (var tx in _transactions) {
-      if (tx['created_at'] != null) {
-        try {
-          final dt = DateTime.parse(tx['created_at']).toLocal();
-          if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-            final double amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-            final String type = tx['type']?.toString().toUpperCase() ?? (amount < 0 ? 'FARE' : 'TOP_UP');
-            if (type == 'FARE' || type == 'FARE_DEDUCTION' || amount < 0) {
-              totalSpent += amount.abs();
-              totalTrips += 1;
-            }
-          }
-        } catch (_) {}
-      }
-    }
-
-    // For UI demonstration if no trips today (so the UI isn't empty):
-    if (totalTrips == 0 && _transactions.isNotEmpty) {
-      totalSpent = 40.0;
-      totalTrips = 2;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Today\'s Overview', style: CommutasTextStyles.labelBold),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: CommutasColors.primaryNavy,
-                  borderRadius: BorderRadius.zero,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.receipt_long, color: CommutasColors.emeraldGreen, size: 16),
-                        const SizedBox(width: 8),
-                        Text('Total Spent', style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white70)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text('Rs. ${totalSpent.toStringAsFixed(0)}', style: CommutasTextStyles.heading2.copyWith(color: Colors.white)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: CommutasColors.primaryNavy,
-                  borderRadius: BorderRadius.zero,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.directions_bus, color: CommutasColors.emeraldGreen, size: 16),
-                        const SizedBox(width: 8),
-                        Text('Total Trips', style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white70)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text('$totalTrips Trips', style: CommutasTextStyles.heading2.copyWith(color: Colors.white)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-
   Widget _buildLoadingState() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -553,8 +452,6 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                     Text(displayTitle, style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(formattedDate, style: CommutasTextStyles.bodySmall.copyWith(fontSize: 10)),
-                    const SizedBox(height: 4),
-                    Text('TXN-${tx['id'] ?? (createdAt.hashCode.abs() % 1000000).toString().padLeft(6, '0')}-CUI', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
                   ],
                 ),
               ),

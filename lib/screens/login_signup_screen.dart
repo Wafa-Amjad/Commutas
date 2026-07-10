@@ -502,41 +502,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         if (_isServerLoading)
           Positioned.fill(
             child: Container(
-              color: CommutasColors.primaryNavy.withValues(alpha: 0.40),
+              color: CommutasColors.primaryNavy.withOpacity(0.40),
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
-                child: Center(
-                  child: Container(
-                    width: 200,
-                    padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                    decoration: BoxDecoration(
-                      color: CommutasColors.white,
-                      border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.0,
-                            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
-                          ),
-                        ),
-                        const SizedBox(height: 16.0),
-                        Text(
-                          'Authenticating...',
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: CommutasColors.slateMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                child: const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _LoginBusLoader(message: 'Authenticating...'),
                 ),
               ),
             ),
@@ -1617,6 +1588,264 @@ class _MarqueeTextState extends State<_MarqueeText> {
         maxLines: 1,
       ),
     );
+  }
+}
+
+
+// ──────────────────────────────────────────────────────────
+// Custom uploader loader at the bottom of the screen
+// ──────────────────────────────────────────────────────────
+class _LoginBusLoader extends StatefulWidget {
+  final String message;
+
+  const _LoginBusLoader({required this.message});
+
+  @override
+  State<_LoginBusLoader> createState() => _LoginBusLoaderState();
+}
+
+class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+        ),
+        padding: const EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: 40,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 120,
+              height: 80,
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return CustomPaint(
+                    painter: _LoginBusPainter(animationValue: _controller.value),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              widget.message.toUpperCase(),
+              style: CommutasTextStyles.labelBold.copyWith(letterSpacing: 1.5, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Connecting to Commutas servers...',
+              style: CommutasTextStyles.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            Container(
+              height: 3,
+              color: CommutasColors.lightGreenBg,
+              child: const LinearProgressIndicator(
+                backgroundColor: CommutasColors.lightGreenBg,
+                valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginBusPainter extends CustomPainter {
+  final double animationValue;
+
+  _LoginBusPainter({required this.animationValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = CommutasColors.navyInk
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final bounce = math.sin(animationValue * 2 * math.pi) * 2.0;
+
+    final double top = 10.0 + bounce;
+    final double bottom = size.height - 20.0 + bounce;
+    final double left = 10.0;
+    final double right = size.width - 10.0;
+
+    final bodyBasePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), bodyBasePaint);
+
+    final fillPaint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.12)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), fillPaint);
+
+    final stripePaint = Paint()
+      ..color = CommutasColors.emeraldGreen
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+
+    final windowFillPaint = Paint()
+      ..color = const Color(0xFFE8F5E9)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+
+    for (int i = 0; i < 3; i++) {
+      final double wx = left + 32.0 + i * 20.0;
+      canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), windowFillPaint);
+    }
+
+    final lightConePaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(left, bottom - 10),
+        Offset(left - 30, bottom - 10),
+        [
+          Colors.orangeAccent.withOpacity(0.45),
+          Colors.orangeAccent.withOpacity(0.0),
+        ],
+      )
+      ..style = PaintingStyle.fill;
+    final lightPath = Path()
+      ..moveTo(left, bottom - 10)
+      ..lineTo(left - 30, bottom - 22)
+      ..lineTo(left - 30, bottom + 2)
+      ..close();
+    canvas.drawPath(lightPath, lightConePaint);
+
+    canvas.drawLine(Offset(left, top), Offset(right, top), paint);
+    canvas.drawLine(Offset(right, top), Offset(right, bottom), paint);
+    canvas.drawLine(Offset(left, bottom), Offset(right, bottom), paint);
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
+
+    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
+    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
+    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
+    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+
+    for (int i = 0; i < 3; i++) {
+      final double wx = left + 32.0 + i * 20.0;
+      canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), paint);
+    }
+
+    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    final rayPaint = Paint()
+      ..color = Colors.orangeAccent
+      ..strokeWidth = 1.5;
+    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
+    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+
+    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
+    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+
+    final double wheelRadius = 8.0;
+    final double leftWheelX = left + 20.0;
+    final double rightWheelX = right - 20.0;
+    final double wheelY = bottom + 8.0 - bounce;
+
+    final wheelFill = Paint()
+      ..color = CommutasColors.primaryNavy
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
+    
+    final angle = animationValue * 2 * math.pi;
+    final spokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.2;
+    canvas.drawLine(
+      Offset(leftWheelX, wheelY),
+      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      spokePaint,
+    );
+    canvas.drawLine(
+      Offset(leftWheelX, wheelY),
+      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      spokePaint,
+    );
+
+    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
+    canvas.drawLine(
+      Offset(rightWheelX, wheelY),
+      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      spokePaint,
+    );
+    canvas.drawLine(
+      Offset(rightWheelX, wheelY),
+      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      spokePaint,
+    );
+
+    final smokePaint = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+    final smokeOutline = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    final double exhaustX = right + 2;
+    final double exhaustY = bottom - 4 + bounce;
+
+    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
+    final double p1R = 4.0 + (animationValue * 3.0);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokeOutline);
+
+    final double p2Val = (animationValue + 0.5) % 1.0;
+    final double p2X = exhaustX + 16.0 + math.cos(p2Val * 2 * math.pi) * 3.0;
+    final double p2Y = exhaustY - 8.0 - (p2Val * 14.0);
+    final double p2R = 3.5 + (p2Val * 4.0);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokePaint);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokeOutline);
+
+    final double p3Val = (animationValue + 0.25) % 1.0;
+    final double p3X = exhaustX + 22.0 + math.sin(p3Val * 4 * math.pi) * 2.5;
+    final double p3Y = exhaustY - 12.0 - (p3Val * 16.0);
+    final double p3R = 3.0 + (p3Val * 5.0);
+    final fadedSmoke = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.12 * (1.0 - p3Val))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(p3X, p3Y), p3R, fadedSmoke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LoginBusPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
   }
 }
 

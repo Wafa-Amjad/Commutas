@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -8,6 +9,8 @@ import 'services/biometric_service.dart';
 import 'reset_password_screen.dart';
 import 'login_signup_screen.dart';
 import 'services/route_service.dart';
+import 'services/auth_service.dart';
+import 'dart:developer' as developer;
 
 class ProfileScreen extends StatefulWidget {
   final String studentName;
@@ -34,6 +37,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late String? _avatarPath;
   late String _avatarType;
+  String _avatarCacheBuster = '';
 
   final BiometricService _biometricService = BiometricService();
   bool _isBiometricEnabled = false;
@@ -46,8 +50,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _avatarPath = widget.initialAvatarPath;
-    _avatarType = widget.initialAvatarType;
     _loadBiometricStatus();
     _loadPreferences().then((_) {
       _fetchRoutesAndResolve();
@@ -58,11 +60,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('session_token') ?? '';
     final preferredRouteId = prefs.getString('session_preferred_route_id');
+    final avatarPath = prefs.getString('session_avatar_path');
+    final avatarType = prefs.getString('session_avatar_type') ?? 'emoji';
     
     if (mounted) {
       setState(() {
         _accessToken = token;
         _preferredRouteId = preferredRouteId;
+        _avatarPath = avatarPath;
+        _avatarType = avatarType;
+        _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
       });
     }
   }
@@ -123,11 +130,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null && mounted) {
-      setState(() {
-        _avatarType = 'file';
-        _avatarPath = image.path;
-      });
-      widget.onAvatarChanged(_avatarPath, _avatarType);
+      final bytes = await image.readAsBytes();
+      if (bytes.length > 2 * 1024 * 1024) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image size must be less than 2MB.')),
+          );
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (context) => const _BusUploadLoadingDialog(),
+        );
+      }
+
+      try {
+        final authService = AuthService();
+        final avatarUrl = await authService.uploadAvatar(
+          token: _accessToken ?? '',
+          imageBytes: bytes,
+          fileName: image.name,
+        );
+
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+
+        if (avatarUrl != null && mounted) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('session_avatar_path', avatarUrl);
+          await prefs.setString('session_avatar_type', 'url');
+
+          setState(() {
+            _avatarType = 'url';
+            _avatarPath = avatarUrl;
+            _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
+          });
+          widget.onAvatarChanged(_avatarPath, _avatarType);
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile picture uploaded successfully.')),
+            );
+          }
+        } else {
+          throw Exception('Upload returned empty URL');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        developer.log('Profile image upload failed: $e', name: 'ProfileScreen');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to upload profile picture. Please try again.')),
+          );
+        }
+      }
     }
   }
 
@@ -175,6 +241,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Widget avatarChild;
     if (_avatarPath == null || _avatarType == 'emoji') {
       avatarChild = const Icon(Icons.person, size: 64, color: CommutasColors.primaryNavy);
+    } else if (_avatarType == 'url') {
+      avatarChild = Image.network(
+        '$_avatarPath?t=$_avatarCacheBuster',
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(color: CommutasColors.emeraldGreen, strokeWidth: 2),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 64, color: CommutasColors.primaryNavy),
+      );
     } else {
       avatarChild = Image.file(File(_avatarPath!), fit: BoxFit.cover);
     }
@@ -652,5 +730,258 @@ class _RoadDividerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RoadDividerPainter oldDelegate) => false;
+}
+
+
+// ──────────────────────────────────────────────────────────
+// Custom Uploading Dialog with Bouncing Bus animation
+// ──────────────────────────────────────────────────────────
+class _BusUploadLoadingDialog extends StatefulWidget {
+  const _BusUploadLoadingDialog();
+
+  @override
+  State<_BusUploadLoadingDialog> createState() => _BusUploadLoadingDialogState();
+}
+
+class _BusUploadLoadingDialogState extends State<_BusUploadLoadingDialog> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+      ),
+      padding: const EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: 40,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 120,
+            height: 80,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: _UploadBusPainter(animationValue: _controller.value),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'UPLOADING PICTURE',
+            style: CommutasTextStyles.labelBold.copyWith(letterSpacing: 1.5, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Updating your profile pass photo...',
+            style: CommutasTextStyles.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Container(
+            height: 3,
+            color: CommutasColors.lightGreenBg,
+            child: const LinearProgressIndicator(
+              backgroundColor: CommutasColors.lightGreenBg,
+              valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _UploadBusPainter extends CustomPainter {
+  final double animationValue;
+
+  _UploadBusPainter({required this.animationValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = CommutasColors.navyInk
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final bounce = math.sin(animationValue * 2 * math.pi) * 2.0;
+
+    final double top = 10.0 + bounce;
+    final double bottom = size.height - 20.0 + bounce;
+    final double left = 10.0;
+    final double right = size.width - 10.0;
+
+    final bodyBasePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), bodyBasePaint);
+
+    final fillPaint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.12)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left, top, right, bottom), fillPaint);
+
+    final stripePaint = Paint()
+      ..color = CommutasColors.emeraldGreen
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+
+    final windowFillPaint = Paint()
+      ..color = const Color(0xFFE8F5E9)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+
+    for (int i = 0; i < 3; i++) {
+      final double wx = left + 32.0 + i * 20.0;
+      canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), windowFillPaint);
+    }
+
+    final lightConePaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(left, bottom - 10),
+        Offset(left - 30, bottom - 10),
+        [
+          Colors.orangeAccent.withOpacity(0.45),
+          Colors.orangeAccent.withOpacity(0.0),
+        ],
+      )
+      ..style = PaintingStyle.fill;
+    final lightPath = Path()
+      ..moveTo(left, bottom - 10)
+      ..lineTo(left - 30, bottom - 22)
+      ..lineTo(left - 30, bottom + 2)
+      ..close();
+    canvas.drawPath(lightPath, lightConePaint);
+
+    canvas.drawLine(Offset(left, top), Offset(right, top), paint);
+    canvas.drawLine(Offset(right, top), Offset(right, bottom), paint);
+    canvas.drawLine(Offset(left, bottom), Offset(right, bottom), paint);
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
+
+    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
+    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
+    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
+    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+
+    for (int i = 0; i < 3; i++) {
+      final double wx = left + 32.0 + i * 20.0;
+      canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), paint);
+    }
+
+    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    final rayPaint = Paint()
+      ..color = Colors.orangeAccent
+      ..strokeWidth = 1.5;
+    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
+    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+
+    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
+    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+
+    final double wheelRadius = 8.0;
+    final double leftWheelX = left + 20.0;
+    final double rightWheelX = right - 20.0;
+    final double wheelY = bottom + 8.0 - bounce;
+
+    final wheelFill = Paint()
+      ..color = CommutasColors.primaryNavy
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
+    
+    final angle = animationValue * 2 * math.pi;
+    final spokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.2;
+    canvas.drawLine(
+      Offset(leftWheelX, wheelY),
+      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      spokePaint,
+    );
+    canvas.drawLine(
+      Offset(leftWheelX, wheelY),
+      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      spokePaint,
+    );
+
+    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
+    canvas.drawLine(
+      Offset(rightWheelX, wheelY),
+      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      spokePaint,
+    );
+    canvas.drawLine(
+      Offset(rightWheelX, wheelY),
+      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      spokePaint,
+    );
+
+    final smokePaint = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+    final smokeOutline = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.45)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    final double exhaustX = right + 2;
+    final double exhaustY = bottom - 4 + bounce;
+
+    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
+    final double p1R = 4.0 + (animationValue * 3.0);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
+    canvas.drawCircle(Offset(p1X, p1Y), p1R, smokeOutline);
+
+    final double p2Val = (animationValue + 0.5) % 1.0;
+    final double p2X = exhaustX + 16.0 + math.cos(p2Val * 2 * math.pi) * 3.0;
+    final double p2Y = exhaustY - 8.0 - (p2Val * 14.0);
+    final double p2R = 3.5 + (p2Val * 4.0);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokePaint);
+    canvas.drawCircle(Offset(p2X, p2Y), p2R, smokeOutline);
+
+    final double p3Val = (animationValue + 0.25) % 1.0;
+    final double p3X = exhaustX + 22.0 + math.sin(p3Val * 4 * math.pi) * 2.5;
+    final double p3Y = exhaustY - 12.0 - (p3Val * 16.0);
+    final double p3R = 3.0 + (p3Val * 5.0);
+    final fadedSmoke = Paint()
+      ..color = CommutasColors.slateMuted.withOpacity(0.12 * (1.0 - p3Val))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(p3X, p3Y), p3R, fadedSmoke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _UploadBusPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
 }
 
