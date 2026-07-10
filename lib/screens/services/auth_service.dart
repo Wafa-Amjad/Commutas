@@ -111,5 +111,25 @@ class AuthService {
       rethrow;
     }
   }
+
+  Future<bool> deleteAvatar({required String token}) async {
+    try {
+      final response = await _dio.delete(
+        '/auth/avatar',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      return response.statusCode == 200;
+    } on DioException catch (e) {
+      developer.log(
+        'Delete Avatar Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
+      return false;
+    }
+  }
 }
 

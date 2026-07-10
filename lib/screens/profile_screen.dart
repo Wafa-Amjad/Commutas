@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../theme.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'services/biometric_service.dart';
 import 'reset_password_screen.dart';
 import 'login_signup_screen.dart';
@@ -19,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
   final String initialAvatarType; // 'emoji', 'file'
   final Function(String?, String) onAvatarChanged;
   final String? password;
+  final Function(bool, String?, String?)? onLoadingChanged;
 
   const ProfileScreen({
     super.key,
@@ -28,6 +30,7 @@ class ProfileScreen extends StatefulWidget {
     this.initialAvatarType = 'emoji',
     required this.onAvatarChanged,
     this.password,
+    this.onLoadingChanged,
   });
 
   @override
@@ -140,16 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      if (context.mounted) {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          isDismissible: false,
-          enableDrag: false,
-          builder: (context) => const _BusUploadLoadingDialog(),
-        );
-      }
+      widget.onLoadingChanged?.call(true, 'UPLOADING PICTURE', 'Updating your profile pass photo...');
 
       try {
         final authService = AuthService();
@@ -158,10 +152,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           imageBytes: bytes,
           fileName: image.name,
         );
-
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
 
         if (avatarUrl != null && mounted) {
           final prefs = await SharedPreferences.getInstance();
@@ -184,17 +174,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
           throw Exception('Upload returned empty URL');
         }
       } catch (e) {
-        if (context.mounted) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
         developer.log('Profile image upload failed: $e', name: 'ProfileScreen');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to upload profile picture. Please try again.')),
           );
         }
+      } finally {
+        widget.onLoadingChanged?.call(false, null, null);
       }
     }
+  }
+
+  Future<void> _deleteAvatar(BuildContext context) async {
+    widget.onLoadingChanged?.call(true, 'REMOVING PICTURE', 'Clearing your profile pass photo...');
+
+    try {
+      final authService = AuthService();
+      final success = await authService.deleteAvatar(token: _accessToken ?? '');
+
+      if (success && mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('session_avatar_path');
+        await prefs.setString('session_avatar_type', 'emoji');
+
+        setState(() {
+          _avatarType = 'emoji';
+          _avatarPath = null;
+          _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
+        });
+        widget.onAvatarChanged(_avatarPath, _avatarType);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile picture removed successfully.')),
+          );
+        }
+      } else {
+        throw Exception('Delete failed on server');
+      }
+    } catch (e) {
+      developer.log('Profile image deletion failed: $e', name: 'ProfileScreen');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to remove profile picture. Please try again.')),
+        );
+      }
+    } finally {
+      widget.onLoadingChanged?.call(false, null, null);
+    }
+  }
+
+  void _showAvatarOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
+      builder: (context) {
+        final hasPhoto = _avatarPath != null && _avatarType == 'url';
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: CommutasColors.primaryNavy),
+                title: Text('Upload Photo', style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _changeAvatar(context);
+                },
+              ),
+              if (hasPhoto)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: CommutasColors.danger),
+                  title: Text('Remove Photo', style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.danger, fontWeight: FontWeight.w600)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteAvatar(context);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.close_rounded, color: CommutasColors.slateMuted),
+                title: Text('Cancel', style: CommutasTextStyles.bodyMedium),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -286,33 +356,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     // Avatar
                     GestureDetector(
-                      onTap: () => _changeAvatar(context),
-                      child: Stack(
-                        clipBehavior: Clip.none,
+                      onTap: () => _showAvatarOptions(context),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: CommutasColors.white,
-                              borderRadius: BorderRadius.zero,
-                              border: Border.all(color: CommutasColors.emeraldGreen, width: 2),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.zero,
-                              child: avatarChild,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: -6,
-                            right: -6,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: CommutasColors.accentCobalt,
-                                borderRadius: BorderRadius.zero,
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: CommutasColors.white,
+                                  borderRadius: BorderRadius.zero,
+                                  border: Border.all(color: CommutasColors.emeraldGreen, width: 2),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.zero,
+                                  child: avatarChild,
+                                ),
                               ),
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
+                              Positioned(
+                                bottom: -4,
+                                right: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: const BoxDecoration(
+                                    color: CommutasColors.accentCobalt,
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  child: const Icon(Icons.add, color: Colors.white, size: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Edit Photo',
+                            style: GoogleFonts.inter(
+                              color: Colors.white70,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
                             ),
                           ),
                         ],
@@ -736,14 +821,20 @@ class _RoadDividerPainter extends CustomPainter {
 // ──────────────────────────────────────────────────────────
 // Custom Uploading Dialog with Bouncing Bus animation
 // ──────────────────────────────────────────────────────────
-class _BusUploadLoadingDialog extends StatefulWidget {
-  const _BusUploadLoadingDialog();
+class BusUploadLoadingDialog extends StatefulWidget {
+  final String title;
+  final String message;
+
+  const BusUploadLoadingDialog({
+    this.title = 'UPLOADING PICTURE',
+    this.message = 'Updating your profile pass photo...',
+  });
 
   @override
-  State<_BusUploadLoadingDialog> createState() => _BusUploadLoadingDialogState();
+  State<BusUploadLoadingDialog> createState() => _BusUploadLoadingDialogState();
 }
 
-class _BusUploadLoadingDialogState extends State<_BusUploadLoadingDialog> with SingleTickerProviderStateMixin {
+class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -785,20 +876,20 @@ class _BusUploadLoadingDialogState extends State<_BusUploadLoadingDialog> with S
               animation: _controller,
               builder: (context, child) {
                 return CustomPaint(
-                  painter: _UploadBusPainter(animationValue: _controller.value),
+                  painter: UploadBusPainter(animationValue: _controller.value),
                 );
               },
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            'UPLOADING PICTURE',
+            widget.title,
             style: CommutasTextStyles.labelBold.copyWith(letterSpacing: 1.5, fontSize: 13),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
-            'Updating your profile pass photo...',
+            widget.message,
             style: CommutasTextStyles.bodySmall,
             textAlign: TextAlign.center,
           ),
@@ -818,10 +909,10 @@ class _BusUploadLoadingDialogState extends State<_BusUploadLoadingDialog> with S
   }
 }
 
-class _UploadBusPainter extends CustomPainter {
+class UploadBusPainter extends CustomPainter {
   final double animationValue;
 
-  _UploadBusPainter({required this.animationValue});
+  UploadBusPainter({required this.animationValue});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -980,7 +1071,7 @@ class _UploadBusPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _UploadBusPainter oldDelegate) {
+  bool shouldRepaint(covariant UploadBusPainter oldDelegate) {
     return oldDelegate.animationValue != animationValue;
   }
 }

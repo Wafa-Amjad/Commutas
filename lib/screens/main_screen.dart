@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import '../theme.dart';
 import 'home_screen.dart';
 import 'schedule_screen.dart';
@@ -31,6 +32,9 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   String? _avatarPath;
   String _avatarType = 'emoji';
+  bool _isProfileLoading = false;
+  String _profileLoadingTitle = '';
+  String _profileLoadingMessage = '';
 
   void _onItemTapped(int index) {
     setState(() {
@@ -42,6 +46,14 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _avatarPath = path;
       _avatarType = avatarType;
+    });
+  }
+
+  void _onProfileLoadingChanged(bool isLoading, String? title, String? message) {
+    setState(() {
+      _isProfileLoading = isLoading;
+      _profileLoadingTitle = title ?? '';
+      _profileLoadingMessage = message ?? '';
     });
   }
 
@@ -78,50 +90,74 @@ class _MainScreenState extends State<MainScreen> {
               initialAvatarType: _avatarType,
               onAvatarChanged: _onAvatarChanged,
               password: widget.lastEnteredPassword,
+              onLoadingChanged: _onProfileLoadingChanged,
             ),
           ];
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: const Border(
-            top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+    return Stack(
+      children: [
+        Scaffold(
+          body: IndexedStack(
+            index: _selectedIndex,
+            children: screens,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, -4),
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: const Border(
+                top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, -4),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: widget.role == 'vehicle'
-                  ? [
-                      _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
-                      _buildNfcNavItem(),
-                      _buildNavItem(2, Icons.person_rounded, 'Profile'),
-                    ]
-                  : [
-                      _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
-                      _buildNavItem(1, Icons.commute_rounded, 'Schedule'),
-                      _buildNfcNavItem(),
-                      _buildNavItem(3, Icons.wallet_rounded, 'Wallet'),
-                      _buildNavItem(4, Icons.person_rounded, 'Profile'),
-                    ],
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: widget.role == 'vehicle'
+                      ? [
+                          _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
+                          _buildNfcNavItem(),
+                          _buildNavItem(2, Icons.person_rounded, 'Profile'),
+                        ]
+                      : [
+                          _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
+                          _buildNavItem(1, Icons.commute_rounded, 'Schedule'),
+                          _buildNfcNavItem(),
+                          _buildNavItem(3, Icons.wallet_rounded, 'Wallet'),
+                          _buildNavItem(4, Icons.person_rounded, 'Profile'),
+                        ],
+                ),
+              ),
             ),
           ),
         ),
-      ),
+        if (_isProfileLoading)
+          Positioned.fill(
+            child: Material(
+              type: MaterialType.transparency,
+              child: Container(
+                color: CommutasColors.primaryNavy.withOpacity(0.40),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: BusUploadLoadingDialog(
+                      title: _profileLoadingTitle,
+                      message: _profileLoadingMessage,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
