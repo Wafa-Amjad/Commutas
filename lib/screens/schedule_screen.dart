@@ -20,6 +20,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
   String? _errorMessage;
   String? _preferredRouteId;
 
+  final TextEditingController _morningSearchCtrl = TextEditingController();
+  final TextEditingController _eveningSearchCtrl = TextEditingController();
+  String _morningSearchQuery = '';
+  String _eveningSearchQuery = '';
+  String? _morningTimeFilter;
+  String? _eveningTimeFilter;
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +37,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
   @override
   void dispose() {
     _tabController.dispose();
+    _morningSearchCtrl.dispose();
+    _eveningSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -83,6 +92,15 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
     }
   }
 
+  List<String> _getUniqueTimes(List<Map<String, dynamic>> schedules) {
+    final times = schedules
+        .map((s) => _formatDepartureTime(s['departure_time'] as String? ?? '00:00:00'))
+        .toSet()
+        .toList();
+    times.sort();
+    return times;
+  }
+
   String _calculateArrivalTime(String dep) {
     try {
       final parts = dep.split(':');
@@ -122,6 +140,117 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
     }
   }
 
+  Widget _buildFilterHeader({
+    required bool isMorning,
+    required List<Map<String, dynamic>> originalSchedules,
+    required String searchQuery,
+    required String? selectedTime,
+    required TextEditingController controller,
+    required ValueChanged<String> onSearchChanged,
+    required ValueChanged<String?> onTimeFilterChanged,
+  }) {
+    final uniqueTimes = _getUniqueTimes(originalSchedules);
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: CommutasColors.backgroundGray,
+              borderRadius: BorderRadius.zero,
+              border: Border.all(color: CommutasColors.lineBorder),
+            ),
+            child: TextField(
+              controller: controller,
+              onChanged: onSearchChanged,
+              style: CommutasTextStyles.bodyMedium,
+              decoration: InputDecoration(
+                hintText: 'Search route or area...',
+                hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                prefixIcon: const Icon(Icons.search_rounded, color: CommutasColors.slateMuted, size: 20),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: CommutasColors.slateMuted, size: 18),
+                        onPressed: () {
+                          controller.clear();
+                          onSearchChanged('');
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              ),
+            ),
+          ),
+          if (uniqueTimes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    selected: selectedTime == null,
+                    label: Text(
+                      'All Times',
+                      style: TextStyle(
+                        color: selectedTime == null ? Colors.white : CommutasColors.primaryNavy,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    backgroundColor: CommutasColors.backgroundGray,
+                    selectedColor: CommutasColors.primaryNavy,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: const RoundedRectangleBorder(
+                      side: BorderSide(color: CommutasColors.lineBorder),
+                      borderRadius: BorderRadius.zero,
+                    ),
+                    showCheckmark: false,
+                    onSelected: (selected) {
+                      if (selected) onTimeFilterChanged(null);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ...uniqueTimes.map((time) {
+                    final isSelected = selectedTime == time;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ChoiceChip(
+                        selected: isSelected,
+                        label: Text(
+                          time,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : CommutasColors.primaryNavy,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        backgroundColor: CommutasColors.backgroundGray,
+                        selectedColor: CommutasColors.emeraldGreen,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        shape: const RoundedRectangleBorder(
+                          side: BorderSide(color: CommutasColors.lineBorder),
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          onTimeFilterChanged(selected ? time : null);
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -145,14 +274,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildScheduleList(_morningSchedules),
-          _buildScheduleList(_eveningSchedules),
+          _buildScheduleList(_morningSchedules, true),
+          _buildScheduleList(_eveningSchedules, false),
         ],
       ),
     );
   }
 
-  Widget _buildScheduleList(List<Map<String, dynamic>> schedules) {
+  Widget _buildScheduleList(List<Map<String, dynamic>> schedules, bool isMorning) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -189,22 +318,82 @@ class _ScheduleScreenState extends State<ScheduleScreen> with SingleTickerProvid
       );
     }
 
-    if (schedules.isEmpty) {
-      return Center(
-        child: Text(
-          'No schedules available.',
-          style: CommutasTextStyles.bodyMedium,
-        ),
-      );
-    }
+    final query = isMorning ? _morningSearchQuery : _eveningSearchQuery;
+    final selectedTime = isMorning ? _morningTimeFilter : _eveningTimeFilter;
+    final ctrl = isMorning ? _morningSearchCtrl : _eveningSearchCtrl;
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: schedules.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        return _buildScheduleCard(schedules[index]);
-      },
+    final filteredSchedules = schedules.where((schedule) {
+      final routeName = (schedule['route_name'] as String? ?? '').toLowerCase();
+      final routeId = (schedule['route_id'] as String? ?? '').toLowerCase();
+      final queryText = query.trim().toLowerCase();
+      
+      bool matchesSearch = true;
+      if (queryText.isNotEmpty) {
+        matchesSearch = routeName.contains(queryText) || routeId.contains(queryText);
+      }
+
+      bool matchesTime = true;
+      if (selectedTime != null) {
+        final formattedTime = _formatDepartureTime(schedule['departure_time'] as String? ?? '00:00:00');
+        matchesTime = formattedTime == selectedTime;
+      }
+
+      return matchesSearch && matchesTime;
+    }).toList();
+
+    return Column(
+      children: [
+        _buildFilterHeader(
+          isMorning: isMorning,
+          originalSchedules: schedules,
+          searchQuery: query,
+          selectedTime: selectedTime,
+          controller: ctrl,
+          onSearchChanged: (val) {
+            setState(() {
+              if (isMorning) {
+                _morningSearchQuery = val;
+              } else {
+                _eveningSearchQuery = val;
+              }
+            });
+          },
+          onTimeFilterChanged: (val) {
+            setState(() {
+              if (isMorning) {
+                _morningTimeFilter = val;
+              } else {
+                _eveningTimeFilter = val;
+              }
+            });
+          },
+        ),
+        const Divider(height: 1, color: CommutasColors.lineBorder),
+        Expanded(
+          child: filteredSchedules.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.search_off_rounded, size: 48, color: CommutasColors.slateMuted.withOpacity(0.5)),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No matching schedules found.',
+                        style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredSchedules.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _buildScheduleCard(filteredSchedules[index]);
+                  },
+                ),
+        ),
+      ],
     );
   }
 

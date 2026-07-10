@@ -30,6 +30,14 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   String _temp = '34°C';
   String _weatherEmoji = '☀️';
 
+  List<Map<String, String>>? _allAssignedRoutes;
+  bool _isLoadingRoutes = true;
+  String? _routesError;
+  
+  final TextEditingController _vehicleSearchCtrl = TextEditingController();
+  String _vehicleSearchQuery = '';
+  String? _vehicleTimeFilter;
+
   @override
   void initState() {
     super.initState();
@@ -38,12 +46,33 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
       duration: const Duration(seconds: 4),
     )..repeat();
     _loadWeather();
+    _loadRoutes();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _vehicleSearchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRoutes() async {
+    try {
+      final routes = await _vehicleService.fetchAssignedRoutes(widget.vehicleRegNo);
+      if (mounted) {
+        setState(() {
+          _allAssignedRoutes = routes;
+          _isLoadingRoutes = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _routesError = e.toString();
+          _isLoadingRoutes = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadWeather() async {
@@ -585,7 +614,165 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
 
 
+  Widget _buildVehicleFilterHeader(List<Map<String, String>> originalRoutes) {
+    final uniqueTimes = originalRoutes
+        .map((run) => run['timing'] ?? '')
+        .where((t) => t.isNotEmpty)
+        .toSet()
+        .toList();
+    uniqueTimes.sort();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: CommutasColors.backgroundGray,
+              borderRadius: BorderRadius.zero,
+              border: Border.all(color: CommutasColors.lineBorder),
+            ),
+            child: TextField(
+              controller: _vehicleSearchCtrl,
+              onChanged: (val) {
+                setState(() {
+                  _vehicleSearchQuery = val;
+                });
+              },
+              style: CommutasTextStyles.bodyMedium,
+              decoration: InputDecoration(
+                hintText: 'Search routes or pathways...',
+                hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                prefixIcon: const Icon(Icons.search_rounded, color: CommutasColors.slateMuted, size: 20),
+                suffixIcon: _vehicleSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: CommutasColors.slateMuted, size: 18),
+                        onPressed: () {
+                          _vehicleSearchCtrl.clear();
+                          setState(() {
+                            _vehicleSearchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              ),
+            ),
+          ),
+          if (uniqueTimes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    selected: _vehicleTimeFilter == null,
+                    label: Text(
+                      'All Times',
+                      style: TextStyle(
+                        color: _vehicleTimeFilter == null ? Colors.white : CommutasColors.primaryNavy,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    backgroundColor: CommutasColors.backgroundGray,
+                    selectedColor: CommutasColors.primaryNavy,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    shape: const RoundedRectangleBorder(
+                      side: BorderSide(color: CommutasColors.lineBorder),
+                      borderRadius: BorderRadius.zero,
+                    ),
+                    showCheckmark: false,
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() {
+                          _vehicleTimeFilter = null;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ...uniqueTimes.map((time) {
+                    final isSelected = _vehicleTimeFilter == time;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: ChoiceChip(
+                        selected: isSelected,
+                        label: Text(
+                          time,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : CommutasColors.primaryNavy,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        backgroundColor: CommutasColors.backgroundGray,
+                        selectedColor: CommutasColors.emeraldGreen,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: const RoundedRectangleBorder(
+                          side: BorderSide(color: CommutasColors.lineBorder),
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          setState(() {
+                            _vehicleTimeFilter = selected ? time : null;
+                          });
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildAssignedRoutesCard() {
+    if (_isLoadingRoutes) {
+      return Container(
+        width: double.infinity,
+        decoration: CommutasShapes.cardDecoration,
+        padding: const EdgeInsets.all(24.0),
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+          ),
+        ),
+      );
+    }
+
+    if (_routesError != null) {
+      return Container(
+        width: double.infinity,
+        decoration: CommutasShapes.cardDecoration,
+        padding: const EdgeInsets.all(16.0),
+        child: Text(
+          'Error loading assigned runs: $_routesError',
+          style: TextStyle(color: CommutasColors.danger, fontSize: 12),
+        ),
+      );
+    }
+
+    final routes = _allAssignedRoutes ?? [];
+    
+    // Apply filters
+    final filtered = routes.where((run) {
+      final route = (run['route'] ?? '').toLowerCase();
+      final path = (run['path'] ?? '').toLowerCase();
+      final queryText = _vehicleSearchQuery.trim().toLowerCase();
+      
+      bool matchesSearch = queryText.isEmpty || route.contains(queryText) || path.contains(queryText);
+      bool matchesTime = _vehicleTimeFilter == null || run['timing'] == _vehicleTimeFilter;
+      
+      return matchesSearch && matchesTime;
+    }).toList();
+
     return Container(
       width: double.infinity,
       decoration: CommutasShapes.cardDecoration,
@@ -611,122 +798,109 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
             ),
           ),
           const Divider(height: 1, color: CommutasColors.lineBorder),
-          FutureBuilder<List<Map<String, String>>>(
-            future: _vehicleService.fetchAssignedRoutes(widget.vehicleRegNo),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(24.0),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
-                    ),
-                  ),
-                );
-              } else if (snapshot.hasError) {
-                return Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Error loading assigned runs',
-                    style: TextStyle(color: CommutasColors.danger, fontSize: 12),
-                  ),
-                );
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'No assigned runs found for today.',
-                    style: TextStyle(color: CommutasColors.slateMuted, fontSize: 12),
-                  ),
-                );
-              }
-
-              final routes = snapshot.data!;
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Table(
-                  columnWidths: const {
-                    0: FlexColumnWidth(1.2),
-                    1: FlexColumnWidth(2.8),
-                    2: FlexColumnWidth(2.0),
-                  },
-                  border: TableBorder(
-                    horizontalInside: BorderSide(
-                      color: CommutasColors.lineBorder.withOpacity(0.4),
-                      width: 1,
-                    ),
-                  ),
+          _buildVehicleFilterHeader(routes),
+          const Divider(height: 1, color: CommutasColors.lineBorder),
+          if (filtered.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    TableRow(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Text('SESSION', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Text('ROUTE PATH', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Text('TIMINGS', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
-                        ),
-                      ],
+                    Icon(Icons.search_off_rounded, size: 36, color: CommutasColors.slateMuted.withOpacity(0.5)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No matching assigned runs.',
+                      style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
                     ),
-                    ...routes.map((run) {
-                      return TableRow(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                  color: run['session'] == 'Morning' ? CommutasColors.lightGreenBg : CommutasColors.primaryNavy.withOpacity(0.08),
-                                  child: Text(
-                                    run['session']!.toUpperCase(),
-                                    style: TextStyle(
-                                      color: run['session'] == 'Morning' ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 8,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  run['route']!,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  run['path']!,
-                                  style: const TextStyle(fontSize: 9, color: CommutasColors.slateMuted),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10.0),
-                            child: Text(
-                              run['timing']!,
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
                   ],
                 ),
-              );
-            },
-          ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(1.2),
+                  1: FlexColumnWidth(2.8),
+                  2: FlexColumnWidth(2.0),
+                },
+                border: TableBorder(
+                  horizontalInside: BorderSide(
+                    color: CommutasColors.lineBorder.withOpacity(0.4),
+                    width: 1,
+                  ),
+                ),
+                children: [
+                  TableRow(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Text('SESSION', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Text('ROUTE PATH', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Text('TIMINGS', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                      ),
+                    ],
+                  ),
+                  ...filtered.map((run) {
+                    return TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                color: run['session'] == 'Morning' ? CommutasColors.lightGreenBg : CommutasColors.primaryNavy.withOpacity(0.08),
+                                child: Text(
+                                  run['session']!.toUpperCase(),
+                                  style: TextStyle(
+                                    color: run['session'] == 'Morning' ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                run['route']!,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                run['path']!,
+                                style: const TextStyle(fontSize: 9, color: CommutasColors.slateMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Text(
+                            run['timing']!,
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ),
         ],
       ),
     );
