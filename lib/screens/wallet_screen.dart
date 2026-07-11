@@ -10,8 +10,9 @@ import 'services/notification_service.dart';
 
 class WalletScreen extends StatefulWidget {
   final String? studentRegNo;
+  final int activeIndex;
 
-  const WalletScreen({super.key, this.studentRegNo});
+  const WalletScreen({super.key, this.studentRegNo, required this.activeIndex});
 
   @override
   State<WalletScreen> createState() => _WalletScreenState();
@@ -46,6 +47,14 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkPendingTransactions();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant WalletScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.activeIndex == 3 && oldWidget.activeIndex != 3) {
+      _loadSessionData();
     }
   }
 

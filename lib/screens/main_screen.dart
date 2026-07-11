@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'services/auth_service.dart';
 import '../theme.dart';
 import 'home_screen.dart';
 import 'schedule_screen.dart';
@@ -7,7 +9,7 @@ import 'wallet_screen.dart';
 import 'profile_screen.dart';
 import 'nfc_pay_screen.dart';
 import 'vehicle/vehicle_home_screen.dart';
-import 'vehicle/vehicle_payment_check_screen.dart';
+import 'vehicle/vehicle_collect_tab_screen.dart';
 import 'vehicle/vehicle_profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -35,6 +37,37 @@ class _MainScreenState extends State<MainScreen> {
   bool _isProfileLoading = false;
   String _profileLoadingTitle = '';
   String _profileLoadingMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.role == 'student') {
+      _loadProfileAndAvatar();
+    }
+  }
+
+  Future<void> _loadProfileAndAvatar() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('session_token') ?? '';
+      if (token.isNotEmpty) {
+        final authService = AuthService();
+        final profile = await authService.getStudentProfile(token: token);
+        if (profile != null && mounted) {
+          final avatarUrl = profile['avatar_url'];
+          setState(() {
+            if (avatarUrl != null) {
+              _avatarPath = avatarUrl;
+              _avatarType = 'url';
+            } else {
+              _avatarPath = null;
+              _avatarType = 'emoji';
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -65,7 +98,7 @@ class _MainScreenState extends State<MainScreen> {
               vehicleName: widget.studentName,
               vehicleRegNo: widget.studentRegNo,
             ),
-            const VehiclePaymentCheckScreen(),
+            VehicleCollectTabScreen(onNavigateToTab: _onItemTapped),
             VehicleProfileScreen(
               vehicleName: widget.studentName,
               vehicleRegNo: widget.studentRegNo,
@@ -79,10 +112,14 @@ class _MainScreenState extends State<MainScreen> {
               avatarPath: _avatarPath,
               avatarType: _avatarType,
               onNavigateToTab: _onItemTapped,
+              activeIndex: _selectedIndex,
             ),
             const ScheduleScreen(),
-            const NFCPayScreen(),
-            WalletScreen(studentRegNo: widget.studentRegNo),
+            NFCPayScreen(onNavigateToTab: _onItemTapped),
+            WalletScreen(
+              studentRegNo: widget.studentRegNo,
+              activeIndex: _selectedIndex,
+            ),
             ProfileScreen(
               studentName: widget.studentName,
               studentRegNo: widget.studentRegNo,

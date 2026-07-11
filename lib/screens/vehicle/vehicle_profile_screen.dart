@@ -257,6 +257,11 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('session_active', false);
           await prefs.remove('session_role');
+          await prefs.remove('active_session_id');
+          await prefs.remove('active_session_schedule_id');
+          await prefs.remove('active_session_route_name');
+          await prefs.remove('active_session_route_path');
+          await prefs.remove('active_session_timing');
           if (context.mounted) {
             Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
               MaterialPageRoute(builder: (context) => const LoginSignupScreen()),

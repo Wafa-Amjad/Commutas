@@ -39,6 +39,7 @@ class CommutasColors {
   static const Color surface = Colors.white;
   static const Color white = Colors.white;
   static const Color sageTint = lightGreenBg;
+  static const Color lightBlueBg = cobaltTint;
   static const Color navyInk = primaryNavy;
 }
 

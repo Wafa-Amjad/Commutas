@@ -64,18 +64,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('session_token') ?? '';
     final preferredRouteId = prefs.getString('session_preferred_route_id');
-    final avatarPath = prefs.getString('session_avatar_path');
-    final avatarType = prefs.getString('session_avatar_type') ?? 'emoji';
     
     if (mounted) {
       setState(() {
         _accessToken = token;
         _preferredRouteId = preferredRouteId;
-        _avatarPath = avatarPath;
-        _avatarType = avatarType;
         _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
       });
     }
+
+    if (token.isNotEmpty) {
+      _fetchProfileData(token);
+    }
+  }
+
+  Future<void> _fetchProfileData(String token) async {
+    try {
+      final authService = AuthService();
+      final profile = await authService.getStudentProfile(token: token);
+      if (profile != null && mounted) {
+        final avatarUrl = profile['avatar_url'];
+        setState(() {
+          if (avatarUrl != null) {
+            _avatarPath = avatarUrl;
+            _avatarType = 'url';
+          } else {
+            _avatarPath = null;
+            _avatarType = 'emoji';
+          }
+        });
+        widget.onAvatarChanged(_avatarPath, _avatarType);
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchRoutesAndResolve() async {
@@ -155,10 +175,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
 
         if (avatarUrl != null && mounted) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('session_avatar_path', avatarUrl);
-          await prefs.setString('session_avatar_type', 'url');
-
           setState(() {
             _avatarType = 'url';
             _avatarPath = avatarUrl;
@@ -205,10 +221,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final success = await authService.deleteAvatar(token: _accessToken ?? '');
 
       if (success && mounted) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('session_avatar_path');
-        await prefs.setString('session_avatar_type', 'emoji');
-
         setState(() {
           _avatarType = 'emoji';
           _avatarPath = null;

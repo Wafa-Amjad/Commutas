@@ -21,11 +21,13 @@ class HomeScreen extends StatefulWidget {
   final String? avatarPath;
   final String avatarType;
   final Function(int)? onNavigateToTab;
+  final int activeIndex;
 
   const HomeScreen({
     super.key,
     required this.studentName,
     required this.studentRegNo,
+    required this.activeIndex,
     this.password,
     this.avatarPath,
     this.avatarType = 'emoji',
@@ -70,6 +72,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkPendingTransactions();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.activeIndex == 0 && oldWidget.activeIndex != 0) {
+      _loadTokenAndBalance();
     }
   }
 
