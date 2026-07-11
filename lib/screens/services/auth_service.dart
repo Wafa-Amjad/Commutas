@@ -72,6 +72,28 @@ class AuthService {
     }
   }
 
+  // 2c. GET VEHICLE PROFILE METHOD
+  Future<Map<String, dynamic>?> getVehicleProfile({
+    required String token,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/vehicles/profile',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        return response.data; // Contains vehicle profile data
+      }
+      return null;
+    } on DioException catch (e) {
+      developer.log('Get Vehicle Profile Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      rethrow;
+    }
+  }
+
   // 3. PASSWORD RESET METHOD
   Future<Map<String, dynamic>?> resetPassword({
     required String regNo,

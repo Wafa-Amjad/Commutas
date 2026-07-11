@@ -1,19 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme.dart';
+import '../services/auth_service.dart';
 import '../login_signup_screen.dart';
-import 'vehicle_service.dart';
 
-class VehicleProfileScreen extends StatelessWidget {
+class VehicleProfileScreen extends StatefulWidget {
   final String vehicleName;
   final String vehicleRegNo;
-  final VehicleService _vehicleService = VehicleService();
 
-  VehicleProfileScreen({
+  const VehicleProfileScreen({
     super.key,
     required this.vehicleName,
     required this.vehicleRegNo,
   });
+
+  @override
+  State<VehicleProfileScreen> createState() => _VehicleProfileScreenState();
+}
+
+class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
+  final AuthService _authService = AuthService();
+  late Future<Map<String, dynamic>?> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = _fetchProfile();
+  }
+
+  Future<Map<String, dynamic>?> _fetchProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('session_token') ?? '';
+    if (token.isEmpty) return null;
+    return await _authService.getVehicleProfile(token: token);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,8 +45,8 @@ class VehicleProfileScreen extends StatelessWidget {
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
-      body: FutureBuilder<Map<String, String>>(
-        future: _vehicleService.fetchVehicleDetails(vehicleRegNo),
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: _profileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -41,7 +61,7 @@ class VehicleProfileScreen extends StatelessWidget {
                 style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.danger),
               ),
             );
-          } else if (!snapshot.hasData) {
+          } else if (!snapshot.hasData || snapshot.data == null) {
             return Center(
               child: Text(
                 'No profile details found',
@@ -51,9 +71,9 @@ class VehicleProfileScreen extends StatelessWidget {
           }
 
           final data = snapshot.data!;
-          final busRegNo = data['bus_reg_no'] ?? vehicleRegNo;
-          final driverName = data['driver_name'] ?? 'N/A';
-          final seatCapacity = data['seat_capacity'] ?? 'N/A';
+          final busRegNo = data['registration_no'] ?? widget.vehicleRegNo;
+          final driverName = data['current_driver'] ?? 'N/A';
+          final seatCapacity = '${data['max_capacity'] ?? 'N/A'} seats';
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -73,7 +93,7 @@ class VehicleProfileScreen extends StatelessWidget {
               child: Column(
                 children: [
                   InteractiveProfileHeader(
-                    vehicleName: vehicleName,
+                    vehicleName: driverName,
                     busRegNo: busRegNo,
                   ),
                   const SizedBox(height: 24),
@@ -259,7 +279,7 @@ class VehicleProfileScreen extends StatelessWidget {
   }
 }
 
-class InteractiveProfileHeader extends StatefulWidget {
+class InteractiveProfileHeader extends StatelessWidget {
   final String vehicleName;
   final String busRegNo;
 
@@ -270,194 +290,62 @@ class InteractiveProfileHeader extends StatefulWidget {
   });
 
   @override
-  State<InteractiveProfileHeader> createState() => _InteractiveProfileHeaderState();
-}
-
-class _InteractiveProfileHeaderState extends State<InteractiveProfileHeader> with SingleTickerProviderStateMixin {
-  bool _isEngineOn = false;
-  double _scale = 1.0;
-  late AnimationController _spinController;
-
-  @override
-  void initState() {
-    super.initState();
-    _spinController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-  }
-
-  @override
-  void dispose() {
-    _spinController.dispose();
-    super.dispose();
-  }
-
-  void _triggerAvatarAnimation() {
-    if (!_spinController.isAnimating) {
-      _spinController.forward(from: 0.0);
-    }
-    setState(() {
-      _scale = 1.15;
-    });
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        setState(() {
-          _scale = 1.0;
-        });
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _isEngineOn = !_isEngineOn;
-        });
-        _triggerAvatarAnimation();
-        
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEngineOn 
-                  ? 'Engine Started! Simulated Speed: 40 km/h' 
-                  : 'Engine Turned Off. Status: Parked',
-            ),
-            backgroundColor: _isEngineOn ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
-            duration: const Duration(seconds: 1),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: CommutasColors.primaryNavy,
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: CommutasColors.primaryNavy.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
-        );
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: _isEngineOn
-                ? [const Color(0xFF0F1E19), const Color(0xFF142D23)]
-                : [CommutasColors.primaryNavy, const Color(0xFF1E2638)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(
-            color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white24,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: (_isEngineOn ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy).withOpacity(0.2),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // Interactive Animated Avatar
-            AnimatedScale(
-              scale: _scale,
-              duration: const Duration(milliseconds: 150),
-              curve: Curves.bounceOut,
-              child: RotationTransition(
-                turns: _spinController,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: _isEngineOn 
-                        ? CommutasColors.emeraldGreen.withOpacity(0.2) 
-                        : Colors.white.withOpacity(0.08),
-                    border: Border.all(
-                      color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white54,
-                      width: 2,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.directions_bus_rounded,
-                    color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white,
-                    size: 48,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.vehicleName,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              widget.busRegNo,
-              style: TextStyle(
-                color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: Colors.white24, height: 1),
-            const SizedBox(height: 12),
-            
-            // Sub-metrics row inside the header card
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildHeaderMetric(
-                  icon: Icons.power_settings_new_rounded,
-                  label: 'ENGINE',
-                  value: _isEngineOn ? 'ON (RUNNING)' : 'OFF (PARKED)',
-                  color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white54,
-                ),
-                Container(width: 1, height: 24, color: Colors.white24),
-                _buildHeaderMetric(
-                  icon: Icons.speed_rounded,
-                  label: 'SPEED',
-                  value: _isEngineOn ? '40 km/h' : '0 km/h',
-                  color: _isEngineOn ? CommutasColors.emeraldGreen : Colors.white54,
-                ),
-              ],
-            ),
-          ],
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildHeaderMetric({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Column(
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              border: Border.all(
+                color: Colors.white54,
+                width: 2,
+              ),
+              shape: BoxShape.circle,
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
-        ),
-      ],
+            child: const Icon(
+              Icons.directions_bus_rounded,
+              color: Colors.white,
+              size: 48,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            busRegNo,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'VEHICLE SPECIFICATION',
+            style: TextStyle(
+              color: CommutasColors.sageGreen,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

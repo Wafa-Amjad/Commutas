@@ -4,8 +4,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import '../../theme.dart';
+import '../services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'vehicle_history_screen.dart';
-import 'vehicle_service.dart';
 
 class VehicleHomeScreen extends StatefulWidget {
   final String vehicleName;
@@ -25,7 +26,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   late final AnimationController _animationController;
   final bool _isGpsActive = true;
   bool _isBusActive = true;
-  final VehicleService _vehicleService = VehicleService();
+  final AuthService _authService = AuthService();
 
   String _temp = '34°C';
   String _weatherEmoji = '☀️';
@@ -37,10 +38,12 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   final TextEditingController _vehicleSearchCtrl = TextEditingController();
   String _vehicleSearchQuery = '';
   String? _vehicleTimeFilter;
+  late Future<Map<String, dynamic>?> _profileFuture;
 
   @override
   void initState() {
     super.initState();
+    _profileFuture = _fetchProfile();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -56,22 +59,25 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
     super.dispose();
   }
 
+  Future<Map<String, dynamic>?> _fetchProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('session_token') ?? '';
+    if (token.isEmpty) return null;
+    return await _authService.getVehicleProfile(token: token);
+  }
+
   Future<void> _loadRoutes() async {
-    try {
-      final routes = await _vehicleService.fetchAssignedRoutes(widget.vehicleRegNo);
-      if (mounted) {
-        setState(() {
-          _allAssignedRoutes = routes;
-          _isLoadingRoutes = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _routesError = e.toString();
-          _isLoadingRoutes = false;
-        });
-      }
+    if (mounted) {
+      setState(() {
+        _allAssignedRoutes = [
+          {'session': 'Morning', 'route': 'ROUTE-MURREE', 'path': 'Rawalpindi → Murree Road → Campus', 'timing': '08:15 AM'},
+          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '01:45 PM'},
+          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '03:15 PM'},
+          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '04:45 PM'},
+          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '06:15 PM'},
+        ];
+        _isLoadingRoutes = false;
+      });
     }
   }
 
@@ -81,8 +87,8 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
       final response = await dio.get(
         'https://api.open-meteo.com/v1/forecast',
         queryParameters: {
-          'latitude': '33.6844',
-          'longitude': '73.0479',
+          'latitude': '34.19799725235686',
+          'longitude': '73.24585572883572',
           'current_weather': 'true',
         },
       );
@@ -148,16 +154,22 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final totalFares = _calculateTotalFares();
-    final totalPassengers = _calculateTotalPassengers();
-
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: _buildAppBar(),
-      body: FutureBuilder<Map<String, String>>(
-        future: _vehicleService.fetchVehicleDetails(widget.vehicleRegNo),
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: _profileFuture,
         builder: (context, snapshot) {
-          final driverName = snapshot.data?['driver_name'] ?? 'Captain';
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+              ),
+            );
+          }
+          final profile = snapshot.data;
+          final driverName = profile?['current_driver'] ?? widget.vehicleName;
+          final capacity = profile?['max_capacity'] ?? 40;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -165,7 +177,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
               children: [
                 _buildGreetingsCard(driverName),
                 const SizedBox(height: 16),
-                _buildVehicleCard(totalFares, totalPassengers),
+                _buildVehicleCard(capacity, driverName),
                 const SizedBox(height: 16),
                 _buildStationAnimationCard(),
                 _buildRoadDivider(),
@@ -212,11 +224,11 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   Widget _buildGreetingsCard(String driverName) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      height: 140,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: Colors.grey[200]!, width: 1.5),
+        border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -225,97 +237,149 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: CommutasColors.accentCobalt.withOpacity(0.08),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.directions_bus_rounded,
-              color: CommutasColors.accentCobalt,
-              size: 24,
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _animationController,
+              builder: (context, _) {
+                return ClipRect(
+                  child: CustomPaint(
+                    painter: _GreetingsBackgroundPainter(animationValue: _animationController.value),
+                  ),
+                );
+              },
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    CommutasColors.lightGreenBg.withOpacity(0.95),
+                    Colors.white.withOpacity(0.20),
+                  ],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Row(
               children: [
-                Text(
-                  _getGreeting(),
-                  style: GoogleFonts.inter(
-                    color: CommutasColors.slateMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: CommutasColors.lightGreenBg,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: CommutasColors.emeraldGreen, width: 1.5),
+                  ),
+                  child: const Icon(
+                    Icons.face_rounded,
+                    color: CommutasColors.emeraldGreen,
+                    size: 24,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Captain',
-                  style: GoogleFonts.inter(
-                    color: CommutasColors.primaryNavy,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _getGreeting().toUpperCase(),
+                        style: GoogleFonts.inter(
+                          color: CommutasColors.slateMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'CAPTAIN',
+                        style: GoogleFonts.inter(
+                          color: CommutasColors.emeraldGreen,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        driverName,
+                        style: GoogleFonts.inter(
+                          color: CommutasColors.primaryNavy,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '$driverName !',
-                  style: GoogleFonts.inter(
-                    color: CommutasColors.primaryNavy,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _weatherEmoji,
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _temp,
+                          style: GoogleFonts.inter(
+                            color: CommutasColors.primaryNavy,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.location_on_rounded, color: CommutasColors.emeraldGreen, size: 10),
+                        const SizedBox(width: 2),
+                        Text(
+                          'ABBOTTABAD',
+                          style: GoogleFonts.inter(
+                            color: CommutasColors.primaryNavy,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatTodayDate().toUpperCase(),
+                      style: GoogleFonts.inter(
+                        color: CommutasColors.slateMuted,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _weatherEmoji,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _temp,
-                    style: GoogleFonts.inter(
-                      color: CommutasColors.primaryNavy,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _formatTodayDate(),
-                style: GoogleFonts.inter(
-                  color: CommutasColors.slateMuted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildVehicleCard(double totalFares, int totalPassengers) {
+  Widget _buildVehicleCard(int maxCapacity, String driverName) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -328,6 +392,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.zero,
+        border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
         boxShadow: [
           BoxShadow(
             color: CommutasColors.primaryNavy.withOpacity(0.12),
@@ -361,66 +426,15 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.vehicleName,
+                            widget.vehicleRegNo,
                             style: GoogleFonts.inter(
                               color: Colors.white,
-                              fontSize: 18,
+                              fontSize: 22,
                               fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Reg No: ${widget.vehicleRegNo}',
-                            style: GoogleFonts.inter(
-                              color: CommutasColors.sageGreen,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
                               letterSpacing: 0.5,
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isBusActive = !_isBusActive;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _isBusActive ? CommutasColors.emeraldGreen.withOpacity(0.2) : Colors.white10,
-                          borderRadius: BorderRadius.zero,
-                          border: Border.all(
-                            color: _isBusActive ? CommutasColors.sageGreen : Colors.white30,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: _isBusActive ? CommutasColors.sageGreen : Colors.white54,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _isBusActive ? 'ON DUTY' : 'OFF DUTY',
-                              style: TextStyle(
-                                color: _isBusActive ? CommutasColors.sageGreen : Colors.white70,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],
@@ -436,20 +450,20 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.account_balance_wallet_outlined, color: CommutasColors.sageGreen, size: 14),
+                              const Icon(Icons.event_seat_rounded, color: CommutasColors.sageGreen, size: 14),
                               const SizedBox(width: 6),
                               Text(
-                                'Today\'s Fares',
+                                'Max Capacity',
                                 style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 11),
                               ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Rs. ${totalFares.toStringAsFixed(2)}',
+                            '$maxCapacity Seats',
                             style: GoogleFonts.inter(
                               color: Colors.white,
-                              fontSize: 22,
+                              fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -468,22 +482,24 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.people_alt_outlined, color: CommutasColors.sageGreen, size: 14),
+                              const Icon(Icons.person_outline_rounded, color: CommutasColors.sageGreen, size: 14),
                               const SizedBox(width: 6),
                               Text(
-                                'Total Passengers',
+                                'Assigned Driver',
                                 style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white60, fontSize: 11),
                               ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '$totalPassengers Taps',
+                            driverName,
                             style: GoogleFonts.inter(
                               color: Colors.white,
-                              fontSize: 22,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
@@ -1121,4 +1137,67 @@ class _RoadDividerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RoadDividerPainter oldDelegate) => false;
+}
+
+class _GreetingsBackgroundPainter extends CustomPainter {
+  final double animationValue;
+
+  _GreetingsBackgroundPainter({required this.animationValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = CommutasColors.primaryNavy.withOpacity(0.12)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    final double horizonY = size.height * 0.15;
+    final double centerX = size.width / 2;
+
+    // Perspective lines radiating outwards
+    const int linesCount = 8;
+    for (int i = 0; i <= linesCount; i++) {
+      final double x = (i / linesCount) * size.width;
+      canvas.drawLine(
+        Offset(x, horizonY),
+        Offset(centerX + (x - centerX) * 2.2, size.height),
+        gridPaint,
+      );
+    }
+
+    // Moving horizontal grid lines
+    const int horizLines = 4;
+    for (int i = 0; i < horizLines; i++) {
+      final double progress = (i + (animationValue * 0.20)) / horizLines;
+      final double y = horizonY + (size.height - horizonY) * progress;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    // Animated emeraldGreen particles rising up
+    final sparkPaint = Paint()
+      ..color = CommutasColors.emeraldGreen.withOpacity(0.28)
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < 4; i++) {
+      final double pProgress = (animationValue + (i * 0.25)) % 1.0;
+      final double px = (centerX - 100) + (i * 65) + (math.sin(pProgress * 4 * math.pi) * 8);
+      final double py = size.height - (size.height * 0.85 * pProgress);
+      final double radius = 3.0 + (3.0 * (1 - pProgress));
+
+      if (py > horizonY) {
+        canvas.drawCircle(Offset(px, py), radius, sparkPaint);
+        
+        final sparkOutline = Paint()
+          ..color = CommutasColors.emeraldGreen.withOpacity(0.45 * (1 - pProgress))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+        canvas.drawCircle(Offset(px, py), radius + 2.0, sparkOutline);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GreetingsBackgroundPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
 }

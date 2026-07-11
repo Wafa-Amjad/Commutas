@@ -277,12 +277,14 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           final vehicle = response['vehicle'];
           final regNo = vehicle['registration_no'] ?? regNoInput;
           final driverName = vehicle['current_driver'] ?? 'Bus Driver';
+          final capacity = vehicle['max_capacity'] ?? 40;
           final token = response['access_token'];
 
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('session_active', true);
           await prefs.setString('session_name', driverName);
           await prefs.setString('session_reg_no', regNo);
+          await prefs.setInt('session_capacity', capacity);
           await prefs.setString('session_role', 'vehicle');
           if (token != null) {
             await prefs.setString('session_token', token);
