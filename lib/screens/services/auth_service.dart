@@ -51,6 +51,27 @@ class AuthService {
     }
   }
 
+  // 2b. VEHICLE LOGIN METHOD
+  Future<Map<String, dynamic>?> loginVehicle({
+    required String registrationNo,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post('/vehicles/login', data: {
+        'registration_no': registrationNo,
+        'password': password,
+      });
+
+      if (response.statusCode == 200) {
+        return response.data; // Contains access_token and vehicle profile data
+      }
+      return null;
+    } on DioException catch (e) {
+      developer.log('Vehicle Login Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      rethrow;
+    }
+  }
+
   // 3. PASSWORD RESET METHOD
   Future<Map<String, dynamic>?> resetPassword({
     required String regNo,

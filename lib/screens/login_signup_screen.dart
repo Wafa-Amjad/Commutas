@@ -203,8 +203,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       }
     } else if (_activeRole == UserRole.vehicle) {
       final vehicleReg = _signInVehicleController.text.trim().toUpperCase();
-      if (vehicleReg.isEmpty || !RegExp(r'^[A-Z0-9\s-]{1,15}$').hasMatch(vehicleReg)) {
-        _setError("Enter a valid vehicle registration number, e.g., ICT-1234 or AB-4471");
+      if (vehicleReg.isEmpty || !RegExp(r'^[A-Z]{1,4}-\d{1,4}$').hasMatch(vehicleReg)) {
+        _setError("Enter a valid vehicle registration number, e.g., ABC-32 or AB-4471");
         return;
       }
       if (password.isEmpty) {
@@ -267,21 +267,33 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           _setError("Authentication failed. Invalid response from server.");
         }
       } else if (_activeRole == UserRole.vehicle) {
-        await Future.delayed(const Duration(seconds: 2));
-        if (password == 'vehicle123') {
-          final name = 'Vehicle Bus #3';
-          final regNo = _signInVehicleController.text.toUpperCase();
+        final regNoInput = _signInVehicleController.text.trim().toUpperCase();
+        final response = await _authService.loginVehicle(
+          registrationNo: regNoInput,
+          password: password,
+        );
+
+        if (response != null && response['vehicle'] != null) {
+          final vehicle = response['vehicle'];
+          final regNo = vehicle['registration_no'] ?? regNoInput;
+          final driverName = vehicle['current_driver'] ?? 'Bus Driver';
+          final token = response['access_token'];
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('session_active', true);
-          await prefs.setString('session_name', name);
+          await prefs.setString('session_name', driverName);
           await prefs.setString('session_reg_no', regNo);
           await prefs.setString('session_role', 'vehicle');
+          if (token != null) {
+            await prefs.setString('session_token', token);
+          }
+
           if (mounted) {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
                 builder: (context) => MainScreen(
-                  studentName: name,
+                  studentName: driverName,
                   studentRegNo: regNo,
                   role: 'vehicle',
                 ),
@@ -289,13 +301,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             );
           }
         } else {
-           _failedAttempts++;
-           if (_failedAttempts >= 5) {
-             _startLockoutTimer(60);
-             _setError("Too many attempts. Try again in 01:00.");
-           } else {
-             _setError("Incorrect identifier or password");
-           }
+          _setError("Authentication failed. Invalid response from server.");
         }
       }
     } catch (e) {
