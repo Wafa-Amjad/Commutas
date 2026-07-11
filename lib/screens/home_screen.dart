@@ -13,7 +13,6 @@ import 'services/notification_service.dart';
 import 'services/route_service.dart';
 import 'dart:developer' as developer;
 import 'reset_password_screen.dart';
-import 'active_buses_screen.dart';
 import 'schedule_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -381,9 +380,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please select the Wallet tab at the bottom to view your full history.')),
-                    );
+                    widget.onNavigateToTab?.call(3);
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
@@ -408,104 +405,110 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   Widget _buildNfcPaymentCard() {
-    return Container(
-      height: 140,
-      decoration: CommutasShapes.cardDecoration,
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          // 1. 3D Background animation stretching across the entire card
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _busAnimationController,
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _ThreeDBackgroundPainter(animationValue: _busAnimationController.value),
-                );
-              },
+    return GestureDetector(
+      onTap: () {
+        widget.onNavigateToTab?.call(2);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 140,
+        decoration: CommutasShapes.cardDecoration,
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            // 1. 3D Background animation stretching across the entire card
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _busAnimationController,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _ThreeDBackgroundPainter(animationValue: _busAnimationController.value),
+                  );
+                },
+              ),
             ),
-          ),
-          
-          // 2. Hand-drawn bus translating across the entire card width
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _busAnimationController,
-              builder: (context, _) {
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final double busWidth = 100;
-                    final double busHeight = 60;
-                    
-                    final double totalDistance = constraints.maxWidth + busWidth;
-                    final double leftPos = constraints.maxWidth - (_busAnimationController.value * totalDistance);
-                    final double topPos = constraints.maxHeight * 0.42;
-                    
-                    return Stack(
-                      children: [
-                        Positioned(
-                          left: leftPos,
-                          top: topPos,
-                          width: busWidth,
-                          height: busHeight,
-                          child: CustomPaint(
-                            painter: TopUpBusPainter(animationValue: _busAnimationController.value),
+            
+            // 2. Hand-drawn bus translating across the entire card width
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _busAnimationController,
+                builder: (context, _) {
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final double busWidth = 100;
+                      final double busHeight = 60;
+                      
+                      final double totalDistance = constraints.maxWidth + busWidth;
+                      final double leftPos = constraints.maxWidth - (_busAnimationController.value * totalDistance);
+                      final double topPos = constraints.maxHeight * 0.42;
+                      
+                      return Stack(
+                        children: [
+                          Positioned(
+                            left: leftPos,
+                            top: topPos,
+                            width: busWidth,
+                            height: busHeight,
+                            child: CustomPaint(
+                              painter: TopUpBusPainter(animationValue: _busAnimationController.value),
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          
-          // 3. Foreground Text & Content
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.92),
-                    Colors.white.withOpacity(0.40),
+            
+            // 3. Foreground Text & Content
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.92),
+                      Colors.white.withOpacity(0.40),
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Tap To Pay',
+                            style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tap to open payment screen',
+                            style: CommutasTextStyles.bodySmall.copyWith(
+                              color: CommutasColors.navyInk.withOpacity(0.75),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Icon(
+                            Icons.contactless,
+                            color: CommutasColors.emeraldGreen,
+                            size: 28,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
                 ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Tap To Pay',
-                          style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Hold your phone\nnear the reader',
-                          style: CommutasTextStyles.bodySmall.copyWith(
-                            color: CommutasColors.navyInk.withOpacity(0.75),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Icon(
-                          Icons.contactless,
-                          color: CommutasColors.emeraldGreen,
-                          size: 28,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -693,7 +696,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         ],
       );
     } else {
-      final routeId = _preferredRoute!['id'] as String? ?? '';
       final startLocation = _preferredRoute!['start_location'] as String? ?? '';
       final via = _preferredRoute!['via'] as String? ?? '';
       final endLocation = _preferredRoute!['end_location'] as String? ?? '';

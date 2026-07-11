@@ -39,6 +39,10 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   LatLng? _busPosition;
   bool _hasCoordinates = false;
   
+  // Dynamic capacity state
+  late int _passengersBoarded;
+  late int _maxCapacity;
+  
   // Connection state — now using web_socket_channel (cross-platform)
   WebSocketChannel? _channel;
   StreamSubscription? _channelSubscription;
@@ -55,6 +59,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   @override
   void initState() {
     super.initState();
+    _passengersBoarded = widget.passengersBoarded;
+    _maxCapacity = widget.maxCapacity;
     
     // Set initial position if provided by the active buses API call
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
@@ -164,15 +170,30 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             final double? lng = payload['longitude'] != null
                 ? (payload['longitude'] as num).toDouble()
                 : null;
+            final int? boarded = payload['passengers_boarded'] != null
+                ? (payload['passengers_boarded'] as num).toInt()
+                : null;
+            final int? maxCap = payload['max_capacity'] != null
+                ? (payload['max_capacity'] as num).toInt()
+                : null;
 
-            if (lat != null && lng != null) {
-              setState(() {
+            setState(() {
+              if (boarded != null) {
+                _passengersBoarded = boarded;
+              }
+              if (maxCap != null) {
+                _maxCapacity = maxCap;
+              }
+              
+              if (lat != null && lng != null) {
                 _busPosition = LatLng(lat, lng);
                 _hasCoordinates = true;
                 _lastUpdateTime = DateTime.now();
                 _lastUpdateAgo = 'just now';
-              });
+              }
+            });
 
+            if (lat != null && lng != null) {
               try {
                 _flutterMapController.move(
                   LatLng(lat, lng),
@@ -471,7 +492,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                           color: CommutasColors.lightGreenBg,
                           border: Border.all(color: CommutasColors.emeraldGreen),
                         ),
-                        child: Text('${widget.passengersBoarded} / ${widget.maxCapacity} Full',
+                        child: Text('$_passengersBoarded / $_maxCapacity Full',
                           style: CommutasTextStyles.labelCaption.copyWith(fontSize: 10)),
                       ),
                     ],
