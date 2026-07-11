@@ -43,6 +43,12 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   String _connectionStatus = 'CONNECTING'; // CONNECTING, CONNECTED, DISCONNECTED
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
+  bool _isManualReconnecting = false;
+
+  // Last update tracking
+  DateTime? _lastUpdateTime;
+  Timer? _lastUpdateDisplayTimer;
+  String _lastUpdateAgo = '';
 
   @override
   void initState() {
@@ -58,45 +64,87 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     }
 
     _connectWebSocket();
+
+    // Tick every second to update the "last update X ago" display
+    _lastUpdateDisplayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_lastUpdateTime != null && mounted) {
+        final diff = DateTime.now().difference(_lastUpdateTime!);
+        final newText = _formatDuration(diff);
+        if (newText != _lastUpdateAgo) {
+          setState(() {
+            _lastUpdateAgo = newText;
+          });
+        }
+      }
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inSeconds < 5) return 'just now';
+    if (d.inSeconds < 60) return '${d.inSeconds}s ago';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    return '${d.inHours}h ago';
   }
 
   @override
   void dispose() {
     _reconnectTimer?.cancel();
+    _lastUpdateDisplayTimer?.cancel();
     _closeWebSocket();
     _flutterMapController.dispose();
     super.dispose();
   }
 
   void _closeWebSocket() {
-    _webSocket?.close();
+    try {
+      _webSocket?.close();
+    } catch (_) {}
     _webSocket = null;
   }
 
-  void _connectWebSocket() async {
+  void _connectWebSocket({bool isManual = false}) async {
     _reconnectTimer?.cancel();
+    _closeWebSocket();
     if (!mounted) return;
 
     setState(() {
       _connectionStatus = 'CONNECTING';
+      _isManualReconnecting = isManual;
     });
 
     try {
-      final serverUrl = AuthService.serverAddress
+      var serverUrl = AuthService.serverAddress
           .replaceAll('https://', 'wss://')
           .replaceAll('http://', 'ws://');
+      if (serverUrl.endsWith('/')) {
+        serverUrl = serverUrl.substring(0, serverUrl.length - 1);
+      }
       final wsUrl = '$serverUrl/ws/student/route/${widget.routeId}';
+      debugPrint('[ActiveBusMapScreen] Connecting to: $wsUrl');
 
       _webSocket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 10));
+      debugPrint('[ActiveBusMapScreen] WebSocket connected.');
       
       if (mounted) {
         setState(() {
           _connectionStatus = 'CONNECTED';
           _reconnectAttempts = 0;
+          _isManualReconnecting = false;
         });
+
+        if (isManual) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Reconnected successfully'),
+              backgroundColor: CommutasColors.emeraldGreen,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
 
       // Listen for broadcasts from the vehicle
+      // NOTE: cancelOnError is FALSE so transient errors don't kill the stream
       _webSocket!.listen(
         (message) {
           if (!mounted) return;
@@ -109,24 +157,41 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
               setState(() {
                 _busPosition = LatLng(lat, lng);
                 _hasCoordinates = true;
+                _lastUpdateTime = DateTime.now();
+                _lastUpdateAgo = 'just now';
               });
 
               // Smoothly center map to the updated coordinate
-              _flutterMapController.move(LatLng(lat, lng), _flutterMapController.camera.zoom);
+              try {
+                _flutterMapController.move(LatLng(lat, lng), _flutterMapController.camera.zoom);
+              } catch (_) {}
             }
-          } catch (_) {
-            // Ignore malformed payloads
+          } catch (e) {
+            debugPrint('[ActiveBusMapScreen] Payload parse error: $e');
           }
         },
         onError: (err) {
-          _handleDisconnect();
+          debugPrint('[ActiveBusMapScreen] Stream error: $err');
+          // Don't call _handleDisconnect here since cancelOnError is false;
+          // the stream stays alive and onDone will fire if it truly closes.
         },
         onDone: () {
+          debugPrint('[ActiveBusMapScreen] Stream done (server closed connection).');
           _handleDisconnect();
         },
-        cancelOnError: true,
+        cancelOnError: false, // Keep listening through transient errors
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ActiveBusMapScreen] Connection failed: $e');
+      if (mounted && isManual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: ${e.toString().split(':').last.trim()}'),
+            backgroundColor: CommutasColors.danger,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
       _handleDisconnect();
     }
   }
@@ -135,12 +200,15 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     if (!mounted) return;
     setState(() {
       _connectionStatus = 'DISCONNECTED';
+      _isManualReconnecting = false;
     });
 
     // Attempt backoff reconnection
     _reconnectAttempts++;
-    final backoffSeconds = _reconnectAttempts > 5 ? 15 : 5;
+    final backoffSeconds = _reconnectAttempts > 5 ? 15 : (_reconnectAttempts > 2 ? 8 : 3);
     
+    debugPrint('[ActiveBusMapScreen] Will auto-reconnect in ${backoffSeconds}s (attempt $_reconnectAttempts)');
+
     _reconnectTimer = Timer(Duration(seconds: backoffSeconds), () {
       if (mounted && _connectionStatus == 'DISCONNECTED') {
         _connectWebSocket();
@@ -163,12 +231,147 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   String _getStatusText() {
     switch (_connectionStatus) {
       case 'CONNECTED':
+        if (_lastUpdateAgo.isNotEmpty) {
+          return 'LIVE • Updated $_lastUpdateAgo';
+        }
         return 'LIVE TRACKING ACTIVE';
       case 'CONNECTING':
-        return 'CONNECTING TO BUS...';
+        return _isManualReconnecting ? 'RECONNECTING...' : 'CONNECTING TO BUS...';
       case 'DISCONNECTED':
       default:
-        return 'OFFLINE - RETRYING';
+        return 'CONNECTION LOST • RETRYING IN ${_reconnectAttempts > 5 ? 15 : (_reconnectAttempts > 2 ? 8 : 3)}s';
+    }
+  }
+
+  Widget _buildStatusBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: CommutasShapes.cardDecoration.copyWith(
+        color: Colors.white,
+      ),
+      child: Row(
+        children: [
+          // Animated status dot
+          if (_connectionStatus == 'CONNECTING')
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(_getStatusColor()),
+              ),
+            )
+          else
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _getStatusColor(),
+                shape: BoxShape.circle,
+              ),
+            ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _getStatusText(),
+              style: CommutasTextStyles.labelBold.copyWith(
+                fontSize: 10,
+                color: _getStatusColor(),
+                letterSpacing: 0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_connectionStatus == 'DISCONNECTED')
+            GestureDetector(
+              onTap: () => _connectWebSocket(isManual: true),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: CommutasColors.primaryNavy,
+                  border: Border.all(color: CommutasColors.primaryNavy),
+                ),
+                child: const Text(
+                  'RETRY NOW',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoordinateInfo() {
+    if (!_hasCoordinates) {
+      // No coordinates yet — show waiting state with context
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    _connectionStatus == 'CONNECTED'
+                        ? CommutasColors.primaryNavy
+                        : CommutasColors.slateMuted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _connectionStatus == 'CONNECTED'
+                      ? 'Connected. Waiting for first GPS update from driver...'
+                      : _connectionStatus == 'CONNECTING'
+                          ? 'Establishing connection to bus...'
+                          : 'Unable to connect. Retrying automatically...',
+                  style: CommutasTextStyles.bodySmall.copyWith(
+                    color: CommutasColors.slateMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'The driver\'s phone broadcasts GPS every 10 seconds after departure.',
+            style: CommutasTextStyles.bodySmall.copyWith(
+              fontSize: 11,
+              color: CommutasColors.slateMuted.withOpacity(0.7),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      );
+    } else {
+      // Has coordinates — show location with last update time
+      return Row(
+        children: [
+          const Icon(Icons.location_on, size: 16, color: CommutasColors.emeraldGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Location: ${_busPosition!.latitude.toStringAsFixed(5)}, ${_busPosition!.longitude.toStringAsFixed(5)}',
+              style: CommutasTextStyles.bodyMedium.copyWith(fontSize: 13),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
     }
   }
 
@@ -204,17 +407,19 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Pulse effect
+                          // Pulse effect — only when connected and recently updated
                           if (_connectionStatus == 'CONNECTED')
                             _PulseAnimation(
                               color: CommutasColors.primaryNavy.withOpacity(0.3),
                             ),
                           // Bus Icon Circle
                           Container(
-                            decoration: const BoxDecoration(
-                              color: CommutasColors.primaryNavy,
+                            decoration: BoxDecoration(
+                              color: _connectionStatus == 'CONNECTED'
+                                  ? CommutasColors.primaryNavy
+                                  : CommutasColors.slateMuted,
                               shape: BoxShape.circle,
-                              boxShadow: [
+                              boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black26,
                                   blurRadius: 6,
@@ -242,46 +447,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             top: 16,
             left: 16,
             right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: CommutasShapes.cardDecoration.copyWith(
-                color: Colors.white,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _getStatusText(),
-                    style: CommutasTextStyles.labelBold.copyWith(
-                      fontSize: 10,
-                      color: _getStatusColor(),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (_connectionStatus == 'DISCONNECTED')
-                    GestureDetector(
-                      onTap: _connectWebSocket,
-                      child: Text(
-                        'RECONNECT',
-                        style: CommutasTextStyles.labelBold.copyWith(
-                          fontSize: 10,
-                          color: CommutasColors.primaryNavy,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            child: _buildStatusBar(),
           ),
 
           // 3. Floating Detail Card at bottom
@@ -334,40 +500,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (!_hasCoordinates) ...[
-                    Row(
-                      children: [
-                        const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.slateMuted),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Waiting for driver GPS stream...',
-                          style: CommutasTextStyles.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ] else ...[
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 16, color: CommutasColors.emeraldGreen),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Location: ${_busPosition!.latitude.toStringAsFixed(5)}, ${_busPosition!.longitude.toStringAsFixed(5)}',
-                            style: CommutasTextStyles.bodyMedium.copyWith(fontSize: 13),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  _buildCoordinateInfo(),
                 ],
               ),
             ),

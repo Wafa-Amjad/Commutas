@@ -374,9 +374,12 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   // ─── GPS & WEBSOCKET ──────────────────────────────────────────────────
   void _connectWebSocket() async {
     try {
-      final serverUrl = AuthService.serverAddress
+      var serverUrl = AuthService.serverAddress
           .replaceAll('https://', 'wss://')
           .replaceAll('http://', 'ws://');
+      if (serverUrl.endsWith('/')) {
+        serverUrl = serverUrl.substring(0, serverUrl.length - 1);
+      }
       final wsUrl = '$serverUrl/ws/vehicle/$_sessionId';
 
       _webSocket = await WebSocket.connect(wsUrl);
@@ -396,57 +399,64 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
 
   void _startLocationBroadcasting() {
     _gpsTimer?.cancel();
+    // Fire an immediate first broadcast so students don't wait 10s
+    _broadcastCurrentLocation();
     _gpsTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (_status != 'TRANSIT') return;
+      _broadcastCurrentLocation();
+    });
+  }
 
-      try {
-        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (!serviceEnabled) {
-          setState(() => _gpsStatus = 'Location services are disabled');
+  Future<void> _broadcastCurrentLocation() async {
+    if (_status != 'TRANSIT') return;
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) setState(() => _gpsStatus = 'Location services are disabled');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) setState(() => _gpsStatus = 'Location permission denied');
           return;
         }
+      }
 
-        LocationPermission permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-          if (permission == LocationPermission.denied) {
-            setState(() => _gpsStatus = 'Location permission denied');
-            return;
-          }
-        }
+      const locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 8),
+      );
+      Position pos = await Geolocator.getCurrentPosition(locationSettings: locationSettings);
 
-        const locationSettings = LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        );
-        Position pos = await Geolocator.getCurrentPosition(locationSettings: locationSettings);
+      if (mounted) {
+        setState(() {
+          _currentPosition = pos;
+          _gpsStatus = 'Broadcasting: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+        });
 
-        if (mounted) {
-          setState(() {
-            _currentPosition = pos;
-            _gpsStatus = 'Broadcasting: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
-          });
+        try {
+          _flutterMapController.move(
+            LatLng(pos.latitude, pos.longitude),
+            15.0,
+          );
+        } catch (_) {}
 
-          try {
-            _flutterMapController.move(
-              LatLng(pos.latitude, pos.longitude),
-              15.0,
-            );
-          } catch (_) {}
-
-          if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
-            _webSocket!.add(jsonEncode({
-              'latitude': pos.latitude,
-              'longitude': pos.longitude,
-            }));
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _gpsStatus = 'Broadcasting failed: $e');
+        if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
+          _webSocket!.add(jsonEncode({
+            'latitude': pos.latitude,
+            'longitude': pos.longitude,
+          }));
         }
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _gpsStatus = 'Broadcasting failed: $e');
+      }
+    }
   }
 
   // ─── END TRIP ─────────────────────────────────────────────────────────
