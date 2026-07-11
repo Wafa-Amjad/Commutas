@@ -13,6 +13,8 @@ import 'services/notification_service.dart';
 import 'services/route_service.dart';
 import 'dart:developer' as developer;
 import 'reset_password_screen.dart';
+import 'active_buses_screen.dart';
+import 'schedule_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String studentName;
@@ -511,16 +513,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   Widget _buildQuickActions() {
     final List<Map<String, dynamic>> items = [
       {
-        'icon': Icons.receipt_long_rounded,
-        'label': 'Transactions',
+        'icon': Icons.calendar_month_rounded,
+        'label': 'Schedule',
         'action': () {
-          if (widget.onNavigateToTab != null) {
-            widget.onNavigateToTab!(3);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Please select the Wallet tab at the bottom to view transactions.')),
-            );
-          }
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ScheduleScreen(),
+            ),
+          );
         }
       },
       {

@@ -2,10 +2,11 @@ import 'package:dio/dio.dart';
 import 'dart:developer' as developer;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'api_interceptor.dart';
+import 'auth_service.dart';
 
 class NotificationService {
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'https://commutas.onrender.com',
+    baseUrl: AuthService.serverAddress,
     headers: {'Content-Type': 'application/json'},
   ))..interceptors.add(ApiInterceptor());
 

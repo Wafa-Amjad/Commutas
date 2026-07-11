@@ -23,6 +23,7 @@ class VehicleSessionScreen extends StatefulWidget {
   final String routeName;
   final String routePath;
   final String timing;
+  final String initialStatus;
   final VoidCallback? onSessionEnded;
 
   const VehicleSessionScreen({
@@ -32,6 +33,7 @@ class VehicleSessionScreen extends StatefulWidget {
     required this.routeName,
     required this.routePath,
     required this.timing,
+    this.initialStatus = 'created',
     this.onSessionEnded,
   });
 
@@ -94,6 +96,60 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
     )..repeat();
 
     _startNfcReader();
+    _fetchSessionDetails();
+  }
+
+  Future<void> _fetchSessionDetails() async {
+    setState(() {
+      _isLoading = true;
+      _errorMsg = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('session_token') ?? '';
+
+      final session = await _authService.getVehicleSession(
+        token: token,
+        sessionId: _sessionId,
+      );
+
+      if (session != null) {
+        final serverStatus = session['status'];
+        final boardedList = session['boarded_students'] as List?;
+
+        setState(() {
+          // Map backend status to UI state
+          if (serverStatus == 'active') {
+            _status = 'TRANSIT';
+            _connectWebSocket();
+            _startLocationBroadcasting();
+          } else if (serverStatus == 'completed') {
+            _status = 'COMPLETED';
+          } else {
+            _status = 'BOARDING';
+          }
+
+          if (boardedList != null) {
+            _boardedStudents.clear();
+            for (var item in boardedList) {
+              _boardedStudents.add({
+                'student_name': item['student_name'] ?? 'Student',
+                'student_reg_no': item['student_reg_no'] ?? 'Verified',
+              });
+            }
+          }
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      setState(() {
+        _errorMsg = 'Failed to load session details: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -123,7 +179,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
 
       await NfcManager.instance.startSession(
         onDiscovered: (NfcTag tag) async {
-          if (_isProcessingNfc || _status != 'BOARDING') return;
+          if (_isProcessingNfc || (_status != 'BOARDING' && _status != 'TRANSIT')) return;
 
           setState(() {
             _isProcessingNfc = true;
@@ -218,7 +274,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       _showFeedback('DENIED', 'Invalid ticket format');
       // Re-enable HCE reader
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && _status == 'BOARDING') {
+        if (mounted && (_status == 'BOARDING' || _status == 'TRANSIT')) {
           setState(() => _nfcStatus = 'READY — awaiting student taps');
         }
       });
@@ -263,7 +319,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       setState(() => _isProcessingNfc = false);
       // Cooldown then re-ready
       Future.delayed(const Duration(seconds: 2), () {
-        if (mounted && _status == 'BOARDING') {
+        if (mounted && (_status == 'BOARDING' || _status == 'TRANSIT')) {
           setState(() => _nfcStatus = 'READY — awaiting student taps');
         }
       });
@@ -298,7 +354,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       );
 
       if (success) {
-        await _stopNfcReader();
         setState(() {
           _status = 'TRANSIT';
           _isLoading = false;
@@ -737,21 +792,27 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         Expanded(
           child: _boardedStudents.isEmpty
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.people_outline_rounded, color: CommutasColors.slateMuted.withValues(alpha: 0.4), size: 40),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Awaiting student taps...',
-                        style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.people_outline_rounded, color: CommutasColors.slateMuted.withValues(alpha: 0.4), size: 36),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Awaiting student taps...',
+                            style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Students must hold their phone near this device',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 10, color: CommutasColors.slateMuted.withValues(alpha: 0.6)),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Students must hold their phone near this device',
-                        style: TextStyle(fontSize: 10, color: CommutasColors.slateMuted.withValues(alpha: 0.6)),
-                      ),
-                    ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -977,6 +1038,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
           ),
           const SizedBox(height: 16),
 
+          // NFC & QR scan option during Transit
+          _buildNfcRadar(),
+          const SizedBox(height: 16),
+
           // Live GPS Card
           Container(
             width: double.infinity,
@@ -1047,24 +1112,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildCoordTile('LONGITUDE', _currentPosition!.longitude.toStringAsFixed(6)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.speed_rounded, size: 14, color: CommutasColors.slateMuted),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${(_currentPosition!.speed * 3.6).toStringAsFixed(1)} km/h',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
-                      ),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.my_location_rounded, size: 14, color: CommutasColors.emeraldGreen),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Accuracy: ${_currentPosition!.accuracy.toStringAsFixed(0)}m',
-                        style: const TextStyle(fontSize: 11, color: CommutasColors.slateMuted),
                       ),
                     ],
                   ),

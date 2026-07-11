@@ -8,7 +8,12 @@ import 'dart:developer' as developer;
 class ApiInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
+    final path = err.requestOptions.path;
+    final isAuthRequest = path.contains('/login') ||
+        path.contains('/register') ||
+        path.contains('/reset-password');
+
+    if (err.response?.statusCode == 401 && !isAuthRequest) {
       developer.log('401 Unauthorized caught by interceptor. Logging out.', name: 'ApiInterceptor');
       try {
         final prefs = await SharedPreferences.getInstance();

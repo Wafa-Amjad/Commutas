@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
 import 'dart:developer' as developer;
 import 'api_interceptor.dart';
+import 'auth_service.dart';
 
 class RouteService {
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'https://commutas.onrender.com',
+    baseUrl: AuthService.serverAddress,
     headers: {'Content-Type': 'application/json'},
   ))..interceptors.add(ApiInterceptor());
 
@@ -70,6 +71,29 @@ class RouteService {
     } on DioException catch (e) {
       developer.log(
         'Fetch Schedules Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'RouteService',
+      );
+      return [];
+    }
+  }
+
+  /// Fetch all active buses in transit. Requires JWT token.
+  Future<List<Map<String, dynamic>>> fetchActiveBuses({required String token}) async {
+    try {
+      final response = await _dio.get(
+        '/api/buses/active',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200 && response.data is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item)),
+        );
+      }
+      return [];
+    } on DioException catch (e) {
+      developer.log(
+        'Fetch Active Buses Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'RouteService',
       );
       return [];

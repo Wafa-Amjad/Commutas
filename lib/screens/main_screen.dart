@@ -8,6 +8,7 @@ import 'schedule_screen.dart';
 import 'wallet_screen.dart';
 import 'profile_screen.dart';
 import 'nfc_pay_screen.dart';
+import 'active_buses_screen.dart';
 import 'vehicle/vehicle_home_screen.dart';
 import 'vehicle/vehicle_collect_tab_screen.dart';
 import 'vehicle/vehicle_profile_screen.dart';
@@ -115,7 +116,7 @@ class _MainScreenState extends State<MainScreen> {
               onNavigateToTab: _onItemTapped,
               activeIndex: _selectedIndex,
             ),
-            const ScheduleScreen(),
+            const ActiveBusesScreen(),
             NFCPayScreen(onNavigateToTab: _onItemTapped),
             WalletScreen(
               studentRegNo: widget.studentRegNo,
@@ -166,7 +167,7 @@ class _MainScreenState extends State<MainScreen> {
                         ]
                       : [
                           _buildNavItem(0, Icons.dashboard_rounded, 'Home'),
-                          _buildNavItem(1, Icons.commute_rounded, 'Schedule'),
+                          _buildNavItem(1, Icons.directions_bus_rounded, 'Tracking'),
                           _buildNfcNavItem(),
                           _buildNavItem(3, Icons.wallet_rounded, 'Wallet'),
                           _buildNavItem(4, Icons.person_rounded, 'Profile'),

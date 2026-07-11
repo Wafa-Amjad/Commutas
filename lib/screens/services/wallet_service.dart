@@ -3,10 +3,11 @@ import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'api_interceptor.dart';
+import 'auth_service.dart';
 
 class WalletService {
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'https://commutas.onrender.com',
+    baseUrl: AuthService.serverAddress,
     headers: {'Content-Type': 'application/json'},
   ))..interceptors.add(ApiInterceptor());
 

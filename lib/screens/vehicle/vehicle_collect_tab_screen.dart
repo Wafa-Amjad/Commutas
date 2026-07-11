@@ -26,6 +26,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
   String? _routeName;
   String? _routePath;
   String? _timing;
+  String? _sessionStatus;
 
   // Route schedules fetching state
   List<Map<String, String>> _schedules = [];
@@ -70,6 +71,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
               _routeName = prefs.getString('active_session_route_name');
               _routePath = prefs.getString('active_session_route_path');
               _timing = prefs.getString('active_session_timing');
+              _sessionStatus = session['status'];
               _isLoading = false;
             });
           }
@@ -89,6 +91,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
         _routeName = null;
         _routePath = null;
         _timing = null;
+        _sessionStatus = null;
       });
       _fetchAssignedSchedules();
     }
@@ -109,6 +112,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
         _routeName = null;
         _routePath = null;
         _timing = null;
+        _sessionStatus = null;
       });
       _fetchAssignedSchedules();
     }
@@ -192,6 +196,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
       }
 
       final sId = res['session_id'];
+      final status = res['status'] ?? 'created';
 
       await prefs.setString('active_session_id', sId);
       await prefs.setString('active_session_schedule_id', _selectedScheduleId!);
@@ -206,6 +211,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
           _routeName = selected['route'];
           _routePath = selected['path'];
           _timing = selected['timing'];
+          _sessionStatus = status;
           _isInitializingSession = false;
         });
       }
@@ -272,6 +278,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
         routeName: _routeName!,
         routePath: _routePath!,
         timing: _timing!,
+        initialStatus: _sessionStatus ?? 'created',
         onSessionEnded: _onSessionEnded,
       );
     }
