@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nfc_manager/nfc_manager.dart';
@@ -8,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as ws_status;
 import '../services/auth_service.dart';
 import '../../theme.dart';
 
@@ -59,7 +60,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   bool _isScanningQr = false;
 
   // Transit state (GPS & WebSocket)
-  WebSocket? _webSocket;
+  WebSocketChannel? _wsChannel;
   Timer? _gpsTimer;
   Position? _currentPosition;
   String _gpsStatus = 'GPS Idle';
@@ -373,6 +374,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
 
   // ─── GPS & WEBSOCKET ──────────────────────────────────────────────────
   void _connectWebSocket() async {
+    _closeWebSocket();
     try {
       var serverUrl = AuthService.serverAddress
           .replaceAll('https://', 'wss://')
@@ -381,11 +383,42 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         serverUrl = serverUrl.substring(0, serverUrl.length - 1);
       }
       final wsUrl = '$serverUrl/ws/vehicle/$_sessionId';
+      debugPrint('[VehicleSession] Connecting WebSocket to: $wsUrl');
 
-      _webSocket = await WebSocket.connect(wsUrl);
-      setState(() => _gpsStatus = 'Connected to server');
+      // Use web_socket_channel for cross-platform WebSocket support
+      _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      await _wsChannel!.ready;
+
+      debugPrint('[VehicleSession] WebSocket connected.');
+      if (mounted) setState(() => _gpsStatus = 'Connected to server');
+
+      // Listen for server-side closure so we can auto-reconnect
+      _wsChannel!.stream.listen(
+        (_) {}, // Vehicle doesn't receive data, only sends
+        onDone: () {
+          debugPrint('[VehicleSession] WebSocket closed by server.');
+          if (mounted && _status == 'TRANSIT') {
+            setState(() => _gpsStatus = 'Server disconnected. Reconnecting...');
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted && _status == 'TRANSIT') _connectWebSocket();
+            });
+          }
+        },
+        onError: (e) {
+          debugPrint('[VehicleSession] WebSocket error: $e');
+          if (mounted && _status == 'TRANSIT') {
+            setState(() => _gpsStatus = 'Connection error. Reconnecting...');
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted && _status == 'TRANSIT') _connectWebSocket();
+            });
+          }
+        },
+      );
     } catch (e) {
-      setState(() => _gpsStatus = 'Server connection failed. Retrying...');
+      debugPrint('[VehicleSession] WebSocket connection failed: $e');
+      if (mounted) {
+        setState(() => _gpsStatus = 'Server connection failed. Retrying...');
+      }
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted && _status == 'TRANSIT') _connectWebSocket();
       });
@@ -393,8 +426,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   }
 
   void _closeWebSocket() {
-    _webSocket?.close();
-    _webSocket = null;
+    try {
+      _wsChannel?.sink.close(ws_status.goingAway);
+    } catch (_) {}
+    _wsChannel = null;
   }
 
   void _startLocationBroadcasting() {
@@ -445,11 +480,15 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
           );
         } catch (_) {}
 
-        if (_webSocket != null && _webSocket!.readyState == WebSocket.open) {
-          _webSocket!.add(jsonEncode({
-            'latitude': pos.latitude,
-            'longitude': pos.longitude,
-          }));
+        if (_wsChannel != null) {
+          try {
+            _wsChannel!.sink.add(jsonEncode({
+              'latitude': pos.latitude,
+              'longitude': pos.longitude,
+            }));
+          } catch (e) {
+            debugPrint('[VehicleSession] Failed to send GPS via WebSocket: $e');
+          }
         }
       }
     } catch (e) {
