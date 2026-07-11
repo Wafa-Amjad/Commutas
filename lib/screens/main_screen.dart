@@ -97,6 +97,7 @@ class _MainScreenState extends State<MainScreen> {
             VehicleHomeScreen(
               vehicleName: widget.studentName,
               vehicleRegNo: widget.studentRegNo,
+              onNavigateToTab: _onItemTapped,
             ),
             VehicleCollectTabScreen(onNavigateToTab: _onItemTapped),
             VehicleProfileScreen(

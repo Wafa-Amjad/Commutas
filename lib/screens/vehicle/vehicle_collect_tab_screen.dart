@@ -138,7 +138,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
         return {
           'schedule_id': item['schedule_id']?.toString() ?? '',
           'session': session,
-          'route': item['route_name']?.toString() ?? item['route_id']?.toString() ?? '',
+          'route': item['route_id']?.toString() ?? '',
           'path': '${item['start_location']} → ${item['via']} → ${item['end_location']}',
           'timing': timing,
         };

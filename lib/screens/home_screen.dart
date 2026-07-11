@@ -250,15 +250,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
+    if (hour >= 5 && hour < 12) return 'Good Morning';
+    if (hour >= 12 && hour < 17) return 'Good Afternoon';
     return 'Good Evening';
   }
 
   String _getGreetingEmoji() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return ' ☀️';
-    if (hour < 17) return ' 🌤️';
+    if (hour >= 5 && hour < 12) return ' ☀️';
+    if (hour >= 12 && hour < 17) return ' 🌤️';
     return ' 🌙';
   }
 

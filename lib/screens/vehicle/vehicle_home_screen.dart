@@ -11,11 +11,13 @@ import 'vehicle_history_screen.dart';
 class VehicleHomeScreen extends StatefulWidget {
   final String vehicleName;
   final String vehicleRegNo;
+  final Function(int)? onNavigateToTab;
 
   const VehicleHomeScreen({
     super.key,
     required this.vehicleName,
     required this.vehicleRegNo,
+    this.onNavigateToTab,
   });
 
   @override
@@ -67,17 +69,48 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   }
 
   Future<void> _loadRoutes() async {
-    if (mounted) {
-      setState(() {
-        _allAssignedRoutes = [
-          {'session': 'Morning', 'route': 'ROUTE-MURREE', 'path': 'Rawalpindi → Murree Road → Campus', 'timing': '08:15 AM'},
-          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '01:45 PM'},
-          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '03:15 PM'},
-          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '04:45 PM'},
-          {'session': 'Evening', 'route': 'ROUTE-MURREE-REV', 'path': 'Campus → Murree Road → Rawalpindi', 'timing': '06:15 PM'},
-        ];
-        _isLoadingRoutes = false;
-      });
+    if (!mounted) return;
+    setState(() {
+      _isLoadingRoutes = true;
+      _routesError = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('session_token') ?? '';
+      if (token.isEmpty) {
+        throw Exception('Not authenticated. Please log in again.');
+      }
+
+      final items = await _authService.getAssignedSchedules(token: token);
+      final list = items.map<Map<String, String>>((item) {
+        final slotName = item['time_slot_name']?.toString() ?? 'Morning';
+        final parts = slotName.split('-');
+        final session = parts.first.trim();
+        final timing = parts.length > 1 ? parts.last.trim() : slotName;
+
+        return {
+          'schedule_id': item['schedule_id']?.toString() ?? '',
+          'session': session,
+          'route': item['route_id']?.toString() ?? '',
+          'path': '',
+          'timing': timing,
+        };
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allAssignedRoutes = list;
+          _isLoadingRoutes = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _routesError = e.toString().replaceAll('Exception:', '').trim();
+          _isLoadingRoutes = false;
+        });
+      }
     }
   }
 
@@ -147,8 +180,8 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
     return 'Good evening';
   }
 
@@ -211,13 +244,6 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: CommutasColors.primaryNavy),
-          onPressed: () {},
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 
@@ -515,105 +541,111 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   }
 
   Widget _buildStationAnimationCard() {
-    return Container(
-      height: 140,
-      decoration: CommutasShapes.cardDecoration,
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          // 1. Station background grid
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _StationBackgroundPainter(animationValue: _animationController.value),
-                );
-              },
+    return GestureDetector(
+      onTap: () {
+        widget.onNavigateToTab?.call(1); // Switch to Collect Tab (index 1)
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 140,
+        decoration: CommutasShapes.cardDecoration,
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            // 1. Station background grid
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _StationBackgroundPainter(animationValue: _animationController.value),
+                  );
+                },
+              ),
             ),
-          ),
-
-          // 2. Interactive Bus and Boarding Passengers
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, _) {
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    return CustomPaint(
-                      painter: _StationActivityPainter(
-                        animationValue: _animationController.value,
-                        isGpsActive: _isGpsActive,
-                      ),
-                    );
-                  },
-                );
-              },
+  
+            // 2. Interactive Bus and Boarding Passengers
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, _) {
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      return CustomPaint(
+                        painter: _StationActivityPainter(
+                          animationValue: _animationController.value,
+                          isGpsActive: _isGpsActive,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-
-          // 3. Foreground details
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.90),
-                    Colors.white.withOpacity(0.20),
+  
+            // 3. Foreground details
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.90),
+                      Colors.white.withOpacity(0.20),
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'START BOARDING SESSION',
+                          style: CommutasTextStyles.labelBold.copyWith(
+                            color: CommutasColors.primaryNavy,
+                            fontSize: 11,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Tap here to open route schedules',
+                          style: CommutasTextStyles.bodySmall.copyWith(
+                            color: CommutasColors.slateMuted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          color: CommutasColors.primaryNavy,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.play_arrow_rounded, color: CommutasColors.emeraldGreen, size: 14),
+                              SizedBox(width: 6),
+                              Text(
+                                'START SESSION',
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
                 ),
               ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'NFC GATEWAY ACTIVE',
-                        style: CommutasTextStyles.labelBold.copyWith(
-                          color: CommutasColors.primaryNavy,
-                          fontSize: 11,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Awaiting student contactless taps',
-                        style: CommutasTextStyles.bodySmall.copyWith(
-                          color: CommutasColors.slateMuted,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        color: CommutasColors.primaryNavy,
-                        child: const Row(
-                          children: [
-                            Icon(Icons.nfc_rounded, color: CommutasColors.emeraldGreen, size: 14),
-                            SizedBox(width: 6),
-                            Text(
-                              'HCE READER READY',
-                              style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -803,7 +835,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                 const Icon(Icons.assignment_turned_in_rounded, size: 16, color: CommutasColors.primaryNavy),
                 const SizedBox(width: 8),
                 Text(
-                  'TODAY\'S ASSIGNED RUNS',
+                  'Relevant Routes',
                   style: CommutasTextStyles.labelBold.copyWith(
                     fontSize: 10,
                     color: CommutasColors.primaryNavy,
@@ -813,8 +845,6 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
               ],
             ),
           ),
-          const Divider(height: 1, color: CommutasColors.lineBorder),
-          _buildVehicleFilterHeader(routes),
           const Divider(height: 1, color: CommutasColors.lineBorder),
           if (filtered.isEmpty)
             Padding(
@@ -840,7 +870,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                 columnWidths: const {
                   0: FlexColumnWidth(1.2),
                   1: FlexColumnWidth(2.8),
-                  2: FlexColumnWidth(2.0),
+                  2: FlexColumnWidth(1.5),
                 },
                 border: TableBorder(
                   horizontalInside: BorderSide(
@@ -856,12 +886,15 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                         child: Text('SESSION', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
                       ),
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Text('ROUTE PATH', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        padding: const EdgeInsets.only(bottom: 8.0, left: 24.0),
+                        child: Text('ROUTE ID', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8.0),
-                        child: Text('TIMINGS', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text('TIMINGS', style: CommutasTextStyles.labelBold.copyWith(fontSize: 9, color: CommutasColors.slateMuted)),
+                        ),
                       ),
                     ],
                   ),
@@ -888,27 +921,20 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                run['route']!,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                run['path']!,
-                                style: const TextStyle(fontSize: 9, color: CommutasColors.slateMuted),
-                              ),
-                            ],
+                          padding: const EdgeInsets.symmetric(vertical: 10.0).copyWith(left: 24.0),
+                          child: Text(
+                            run['route']!,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
                           ),
                         ),
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10.0),
-                          child: Text(
-                            run['timing']!,
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              run['timing']!,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+                            ),
                           ),
                         ),
                       ],
