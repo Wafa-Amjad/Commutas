@@ -5,7 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
+import 'package:geolocator/geolocator.dart';
 import 'services/auth_service.dart';
+import 'services/routing_service.dart';
 import '../theme.dart';
 
 class ActiveBusMapScreen extends StatefulWidget {
@@ -16,6 +18,9 @@ class ActiveBusMapScreen extends StatefulWidget {
   final double? initialLongitude;
   final int maxCapacity;
   final int passengersBoarded;
+  final String? startLocation;
+  final String? endLocation;
+  final String? via;
 
   const ActiveBusMapScreen({
     super.key,
@@ -26,6 +31,9 @@ class ActiveBusMapScreen extends StatefulWidget {
     this.initialLongitude,
     required this.maxCapacity,
     required this.passengersBoarded,
+    this.startLocation,
+    this.endLocation,
+    this.via,
   });
 
   @override
@@ -56,6 +64,18 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   Timer? _lastUpdateDisplayTimer;
   String _lastUpdateAgo = '';
 
+  // Student position tracking
+  LatLng? _studentPosition;
+  bool _hasStudentLocation = false;
+  StreamSubscription<Position>? _positionSubscription;
+
+  // Routing API / ETA state
+  bool _isCalculatingEta = false;
+  double? _routeDistanceKm;
+  double? _routeDurationMin;
+  List<LatLng> _polylinePoints = [];
+  String? _etaError;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +92,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     }
 
     _connectWebSocket();
+    _initStudentLocation();
 
     // Tick every second to update the "last update X ago" display
     _lastUpdateDisplayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -87,6 +108,106 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     });
   }
 
+  Future<void> _initStudentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) {
+        setState(() {
+          _studentPosition = LatLng(position.latitude, position.longitude);
+          _hasStudentLocation = true;
+        });
+      }
+
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      ).listen((Position pos) {
+        if (mounted) {
+          setState(() {
+            _studentPosition = LatLng(pos.latitude, pos.longitude);
+            _hasStudentLocation = true;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('[ActiveBusMap] Student location error: $e');
+    }
+  }
+
+  Future<void> _calculateETA() async {
+    if (_busPosition == null) return;
+    if (!_hasStudentLocation || _studentPosition == null) {
+      await _initStudentLocation();
+      if (!_hasStudentLocation || _studentPosition == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enable location permissions to get ETA.'),
+              backgroundColor: CommutasColors.danger,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    setState(() {
+      _isCalculatingEta = true;
+      _etaError = null;
+    });
+
+    final result = await RoutingService.getRoute(
+      origin: _studentPosition!,
+      destination: _busPosition!,
+    );
+
+    if (mounted) {
+      setState(() {
+        _isCalculatingEta = false;
+        if (result != null) {
+          _routeDistanceKm = result.distanceKm;
+          _routeDurationMin = result.durationMinutes;
+          _polylinePoints = result.polylinePoints;
+          _fitMapToRoute();
+        } else {
+          _routeDistanceKm = RoutingService.straightLineDistanceKm(_studentPosition!, _busPosition!);
+          _routeDurationMin = null;
+          _polylinePoints = [_studentPosition!, _busPosition!];
+          _etaError = 'Failed to fetch road route. Showing straight-line distance.';
+        }
+      });
+    }
+  }
+
+  void _fitMapToRoute() {
+    if (_busPosition == null || _studentPosition == null) return;
+    try {
+      final bounds = LatLngBounds.fromPoints([_studentPosition!, _busPosition!]);
+      _flutterMapController.fitCamera(
+        CameraFit.bounds(
+          bounds: bounds,
+          padding: const EdgeInsets.only(top: 80, bottom: 250, left: 50, right: 50),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[ActiveBusMap] fitCamera error: $e');
+    }
+  }
+
   String _formatDuration(Duration d) {
     if (d.inSeconds < 5) return 'just now';
     if (d.inSeconds < 60) return '${d.inSeconds}s ago';
@@ -98,6 +219,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   void dispose() {
     _reconnectTimer?.cancel();
     _lastUpdateDisplayTimer?.cancel();
+    _positionSubscription?.cancel();
     _closeWebSocket();
     _flutterMapController.dispose();
     super.dispose();
@@ -409,7 +531,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
       ),
       body: Stack(
         children: [
-          // 1. OpenStreetMap Layer
+          // 1. CartoDB Voyager TileLayer with custom markers & polyline
           FlutterMap(
             mapController: _flutterMapController,
             options: MapOptions(
@@ -418,12 +540,24 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'pk.edu.comsats.commutas',
+                retinaMode: RetinaMode.isHighDensity(context),
               ),
-              if (_hasCoordinates)
-                MarkerLayer(
-                  markers: [
+              PolylineLayer(
+                polylines: [
+                  if (_polylinePoints.isNotEmpty)
+                    Polyline(
+                      points: _polylinePoints,
+                      strokeWidth: 4.5,
+                      color: CommutasColors.primaryNavy,
+                    ),
+                ],
+              ),
+              MarkerLayer(
+                markers: [
+                  if (_hasCoordinates)
                     Marker(
                       point: _busPosition!,
                       width: 50,
@@ -451,8 +585,43 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  if (_hasStudentLocation && _studentPosition != null)
+                    Marker(
+                      point: _studentPosition!,
+                      width: 45,
+                      height: 45,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: CommutasColors.primaryNavy.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: CommutasColors.primaryNavy,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
 
@@ -476,33 +645,172 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(widget.routeName,
-                              style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Text(
+                              widget.vehicleNo,
+                              style: CommutasTextStyles.heading2.copyWith(
+                                  fontSize: 16,
+                                  color: CommutasColors.primaryNavy,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             const SizedBox(height: 2),
-                            Text('Bus No: ${widget.vehicleNo}',
-                              style: CommutasTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w600)),
+                            Text(
+                              '${_maxCapacity - _passengersBoarded} Seats Available',
+                              style: CommutasTextStyles.bodySmall.copyWith(
+                                color: CommutasColors.emeraldGreen,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: CommutasColors.lightGreenBg,
-                          border: Border.all(color: CommutasColors.emeraldGreen),
-                        ),
-                        child: Text('$_passengersBoarded / $_maxCapacity Full',
-                          style: CommutasTextStyles.labelCaption.copyWith(fontSize: 10)),
-                      ),
                     ],
                   ),
+                  if (_routeDistanceKm != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CommutasColors.lightGreenBg,
+                        border: Border.all(color: CommutasColors.emeraldGreen.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.directions_car_filled_rounded,
+                                color: CommutasColors.emeraldGreen,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _routeDurationMin != null
+                                      ? '${_routeDistanceKm!.toStringAsFixed(1)} km away • ~${_routeDurationMin!.toStringAsFixed(0)} min ETA'
+                                      : '${_routeDistanceKm!.toStringAsFixed(1)} km away (approx)',
+                                  style: CommutasTextStyles.labelBold.copyWith(
+                                    color: CommutasColors.emeraldGreen,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              if (_isCalculatingEta)
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+                                  ),
+                                )
+                              else
+                                GestureDetector(
+                                  onTap: _calculateETA,
+                                  child: const Icon(
+                                    Icons.refresh_rounded,
+                                    color: CommutasColors.emeraldGreen,
+                                    size: 18,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (_etaError != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              _etaError!,
+                              style: CommutasTextStyles.bodySmall.copyWith(
+                                fontSize: 10,
+                                color: CommutasColors.danger,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (_routeDistanceKm == null) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isCalculatingEta ? null : _calculateETA,
+                        icon: _isCalculatingEta
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                        label: Text(
+                          _isCalculatingEta ? 'CALCULATING ETA...' : 'GET ROAD ETA & PATH',
+                          style: CommutasTextStyles.buttonLabel.copyWith(letterSpacing: 0.5),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: CommutasColors.primaryNavy,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   _buildCoordinateInfo(),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'center_student',
+            onPressed: () {
+              if (_hasStudentLocation && _studentPosition != null) {
+                _flutterMapController.move(_studentPosition!, 15.0);
+              } else {
+                _initStudentLocation().then((_) {
+                  if (_hasStudentLocation && _studentPosition != null) {
+                    _flutterMapController.move(_studentPosition!, 15.0);
+                  }
+                });
+              }
+            },
+            backgroundColor: Colors.white,
+            foregroundColor: CommutasColors.primaryNavy,
+            elevation: 2,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            mini: true,
+            child: const Icon(Icons.my_location),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'center_bus',
+            onPressed: () {
+              if (_busPosition != null) {
+                _flutterMapController.move(_busPosition!, 15.0);
+              }
+            },
+            backgroundColor: Colors.white,
+            foregroundColor: CommutasColors.primaryNavy,
+            elevation: 2,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            mini: true,
+            child: const Icon(Icons.directions_bus_filled),
+          ),
+          const SizedBox(height: 140),
         ],
       ),
     );

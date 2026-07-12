@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
 import 'theme.dart';
@@ -6,7 +7,18 @@ import 'theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await Firebase.initializeApp();
+    if (kIsWeb) {
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: "dummy-api-key-for-web-dev",
+          appId: "dummy-app-id-for-web-dev",
+          messagingSenderId: "dummy-sender-id",
+          projectId: "dummy-project-id",
+        ),
+      );
+    } else {
+      await Firebase.initializeApp();
+    }
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }

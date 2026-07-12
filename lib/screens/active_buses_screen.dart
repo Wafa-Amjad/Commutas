@@ -78,6 +78,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
   Widget _buildEmptyState() {
     return Center(
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -98,20 +99,6 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
               'There are no buses running on active trips at the moment. Please check back later during transit hours.',
               style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadActiveBuses,
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              label: Text(
-                'Refresh List',
-                style: CommutasTextStyles.buttonLabel,
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CommutasColors.primaryNavy,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              ),
             ),
           ],
         ),
@@ -217,9 +204,10 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                     return DropdownMenuItem<String>(
                       value: f['id'],
                       child: Text(
-                        f['name']!,
+                        f['id']!,
                         style: CommutasTextStyles.bodyMedium.copyWith(
                           color: CommutasColors.primaryNavy,
+                          fontWeight: FontWeight.bold,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -341,10 +329,11 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 16.0),
                                       decoration: CommutasShapes.cardDecoration,
+                                      clipBehavior: Clip.hardEdge,
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // Header: Route Info & Status Badge
+                                          // Header
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                                             color: CommutasColors.primaryNavy,
@@ -356,7 +345,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
                                                       Text(
-                                                        routeId.toUpperCase(),
+                                                        vehicleNo,
                                                         style: CommutasTextStyles.heading2.copyWith(
                                                           color: Colors.white,
                                                           fontSize: 15,
@@ -364,18 +353,16 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                       ),
                                                       const SizedBox(height: 2),
                                                       Text(
-                                                        routeName,
+                                                        routeId.toUpperCase(),
                                                         style: CommutasTextStyles.bodySmall.copyWith(
                                                           color: Colors.white70,
                                                           fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
                                                         ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
                                                       ),
                                                     ],
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8),
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                                   decoration: BoxDecoration(
@@ -395,68 +382,36 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                             ),
                                           ),
 
-                                          // Body: Path & Details
+                                          // Body
                                           Padding(
                                             padding: const EdgeInsets.all(16.0),
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                // Path detail row
-                                                Row(
-                                                  children: [
-                                                    const Icon(Icons.route_outlined, size: 20, color: CommutasColors.primaryNavy),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Text.rich(
-                                                        TextSpan(
-                                                          children: [
-                                                            TextSpan(
-                                                              text: '$start ',
-                                                              style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
-                                                            ),
-                                                            TextSpan(
-                                                              text: '→ ',
-                                                              style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
-                                                            ),
-                                                            if (via.isNotEmpty) ...[
-                                                              TextSpan(
-                                                                text: '($via) ',
-                                                                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted, fontSize: 13),
-                                                              ),
-                                                              TextSpan(
-                                                                text: '→ ',
-                                                                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
-                                                              ),
-                                                            ],
-                                                            TextSpan(
-                                                              text: end,
-                                                              style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 12),
+                                                 // Seat Availability indicator
+                                                 Row(
+                                                   children: [
+                                                     const Icon(
+                                                       Icons.event_seat_rounded,
+                                                       size: 18,
+                                                       color: CommutasColors.primaryNavy,
+                                                     ),
+                                                     const SizedBox(width: 8),
+                                                     Text(
+                                                       '$remaining Seats Free',
+                                                       style: CommutasTextStyles.bodyMedium.copyWith(
+                                                         color: CommutasColors.primaryNavy,
+                                                         fontWeight: FontWeight.bold,
+                                                       ),
+                                                     ),
+                                                   ],
+                                                 ),
+                                                 const SizedBox(height: 16),
 
-                                                // Bus Info / Departure Time
+                                                // Bottom Info Row: Departure Time & Occupancy Text
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
-                                                    Row(
-                                                      children: [
-                                                        const Icon(Icons.directions_bus, size: 18, color: CommutasColors.slateMuted),
-                                                        const SizedBox(width: 8),
-                                                        Text(
-                                                          'Bus No: $vehicleNo',
-                                                          style: CommutasTextStyles.bodyMedium.copyWith(
-                                                            color: CommutasColors.inkText,
-                                                            fontWeight: FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
                                                     Row(
                                                       children: [
                                                         const Icon(Icons.access_time_filled, size: 16, color: CommutasColors.slateMuted),
@@ -470,22 +425,6 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                         ),
                                                       ],
                                                     ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 20),
-
-                                                // Divider
-                                                Container(height: 1, color: CommutasColors.lineBorder),
-                                                const SizedBox(height: 16),
-
-                                                // Occupancy Meter
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(
-                                                      'Occupancy Status',
-                                                      style: CommutasTextStyles.labelBold.copyWith(fontSize: 11),
-                                                    ),
                                                     Text(
                                                       '$boarded / $maxCap Boarded',
                                                       style: CommutasTextStyles.bodyMedium.copyWith(
@@ -496,25 +435,17 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                   ],
                                                 ),
                                                 const SizedBox(height: 8),
+
+                                                // Occupancy Progress Indicator
                                                 ClipRRect(
                                                   child: LinearProgressIndicator(
                                                     value: ratio,
-                                                    minHeight: 8,
+                                                    minHeight: 6,
                                                     backgroundColor: CommutasColors.lineBorder,
                                                     valueColor: AlwaysStoppedAnimation<Color>(_getOccupancyColor(ratio)),
                                                   ),
                                                 ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  '$remaining seats available',
-                                                  style: CommutasTextStyles.bodySmall.copyWith(
-                                                    color: remaining == 0
-                                                        ? CommutasColors.danger
-                                                        : CommutasColors.slateMuted,
-                                                    fontWeight: remaining == 0 ? FontWeight.bold : FontWeight.normal,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 20),
+                                                const SizedBox(height: 16),
 
                                                 // Track Bus CTA Button
                                                 SizedBox(
@@ -532,6 +463,9 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                             initialLongitude: bus['longitude'] != null ? (bus['longitude'] as num).toDouble() : null,
                                                             maxCapacity: maxCap,
                                                             passengersBoarded: boarded,
+                                                            startLocation: start,
+                                                            endLocation: end,
+                                                            via: via,
                                                           ),
                                                         ),
                                                       );
@@ -545,7 +479,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
                                                       backgroundColor: CommutasColors.primaryNavy,
                                                       foregroundColor: Colors.white,
                                                       elevation: 0,
-                                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                                      padding: const EdgeInsets.symmetric(vertical: 12),
                                                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                                                     ),
                                                   ),

@@ -461,44 +461,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
               ),
             ),
             
-            // 3. Foreground Text & Content
+            // 3. Foreground Text & Content (designed like a premium contactless pass)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.white.withOpacity(0.92),
-                      Colors.white.withOpacity(0.40),
+                      Colors.white.withOpacity(0.95),
+                      Colors.white.withOpacity(0.45),
                     ],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Tap To Pay',
-                            style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'NFC TRANSIT CARD',
+                                style: CommutasTextStyles.labelBold.copyWith(
+                                  fontSize: 10,
+                                  color: CommutasColors.slateMuted,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Tap to Pay via NFC',
+                                style: CommutasTextStyles.heading2.copyWith(
+                                  color: CommutasColors.primaryNavy,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Tap to open payment screen',
-                            style: CommutasTextStyles.bodySmall.copyWith(
-                              color: CommutasColors.navyInk.withOpacity(0.75),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Icon(
-                            Icons.contactless,
-                            color: CommutasColors.emeraldGreen,
-                            size: 28,
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.contactless_rounded,
+                                color: CommutasColors.emeraldGreen,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'TAP TO OPEN PASS',
+                                style: CommutasTextStyles.labelBold.copyWith(
+                                  fontSize: 10,
+                                  color: CommutasColors.emeraldGreen,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
