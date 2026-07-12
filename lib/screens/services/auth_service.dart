@@ -318,6 +318,25 @@ class AuthService {
     }
   }
 
+  // 11b. GET ACTIVE VEHICLE SESSION (checks if there is any active session on login/reload)
+  Future<Map<String, dynamic>?> getActiveVehicleSession({
+    required String token,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/vehicles/session/active',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      if (response.statusCode == 200) {
+        return response.data; // Contains active (bool) and session (Map?)
+      }
+      return null;
+    } on DioException catch (e) {
+      developer.log('Get Active Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      return null;
+    }
+  }
+
   // 12. GET STUDENT PAYMENT TOKEN STATUS
   Future<Map<String, dynamic>?> getPaymentTokenStatus({
     required String token,

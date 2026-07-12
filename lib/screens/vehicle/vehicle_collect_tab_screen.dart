@@ -46,54 +46,87 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
     _checkActiveSession();
   }
 
-  /// Check if there's an active session stored in SharedPreferences.
-  /// If found, verify it's still valid on the server before showing the session screen.
+  /// Check if there's an active session on the server or stored locally.
   Future<void> _checkActiveSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final sId = prefs.getString('active_session_id');
+    final token = prefs.getString('session_token') ?? '';
 
     if (!mounted) return;
 
-    if (sId != null) {
+    if (token.isEmpty) {
       setState(() {
-        _isLoading = true;
+        _isLoading = false;
       });
+      return;
+    }
 
-      try {
-        final token = prefs.getString('session_token') ?? '';
-        final session = await _authService.getVehicleSession(token: token, sessionId: sId);
+    setState(() {
+      _isLoading = true;
+    });
 
-        if (session != null && (session['status'] == 'created' || session['status'] == 'active')) {
-          if (mounted) {
-            setState(() {
-              _sessionId = sId;
-              _scheduleId = prefs.getString('active_session_schedule_id');
-              _routeName = prefs.getString('active_session_route_name');
-              _routePath = prefs.getString('active_session_route_path');
-              _timing = prefs.getString('active_session_timing');
-              _sessionStatus = session['status'];
-              _isLoading = false;
-            });
-          }
-        } else {
-          // Session is completed, cancelled, or invalid on the server. Clear local cache.
-          await _clearLocalSession();
+    try {
+      // Always query the server for any active/created sessions for this vehicle (source of truth)
+      final activeRes = await _authService.getActiveVehicleSession(token: token);
+
+      if (activeRes != null && activeRes['active'] == true && activeRes['session'] != null) {
+        final session = activeRes['session'];
+        final sId = session['id'] as String;
+        final scheduleId = session['route_schedule_id'] as String;
+        final routeName = session['route_name'] ?? 'Unknown Route';
+        final start = session['start_location'] ?? '';
+        final via = session['via'] ?? '';
+        final end = session['end_location'] ?? '';
+        final routePath = '$start → $via → $end';
+        final timing = session['departure_time'] ?? '00:00:00';
+        final status = session['status'] ?? 'created';
+
+        // Update local cache
+        await prefs.setString('active_session_id', sId);
+        await prefs.setString('active_session_schedule_id', scheduleId);
+        await prefs.setString('active_session_route_name', routeName);
+        await prefs.setString('active_session_route_path', routePath);
+        await prefs.setString('active_session_timing', timing);
+
+        if (mounted) {
+          setState(() {
+            _sessionId = sId;
+            _scheduleId = scheduleId;
+            _routeName = routeName;
+            _routePath = routePath;
+            _timing = timing;
+            _sessionStatus = status;
+            _isLoading = false;
+          });
         }
-      } catch (e) {
-        // If query fails (e.g. 404), assume session is invalid and clear it.
-        developer.log('Active session verification failed: $e. Clearing local cache.', name: 'VehicleCollectTabScreen');
+      } else {
+        // No active session on the server. Clean up any local cache.
         await _clearLocalSession();
       }
-    } else {
-      setState(() {
-        _sessionId = null;
-        _scheduleId = null;
-        _routeName = null;
-        _routePath = null;
-        _timing = null;
-        _sessionStatus = null;
-      });
-      _fetchAssignedSchedules();
+    } catch (e) {
+      developer.log('Active session verification failed: $e. Checking local storage...', name: 'VehicleCollectTabScreen');
+      
+      // Fallback: check if we have a local cache and verify it
+      final sId = prefs.getString('active_session_id');
+      if (sId != null) {
+        try {
+          final session = await _authService.getVehicleSession(token: token, sessionId: sId);
+          if (session != null && (session['status'] == 'created' || session['status'] == 'active')) {
+            if (mounted) {
+              setState(() {
+                _sessionId = sId;
+                _scheduleId = prefs.getString('active_session_schedule_id');
+                _routeName = prefs.getString('active_session_route_name');
+                _routePath = prefs.getString('active_session_route_path');
+                _timing = prefs.getString('active_session_timing');
+                _sessionStatus = session['status'];
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+        } catch (_) {}
+      }
+      await _clearLocalSession();
     }
   }
 
