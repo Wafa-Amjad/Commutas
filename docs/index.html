@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commutas — Campus Transit Platform</title>
+    <meta name="description"
+        content="Commutas is a campus transit platform for COMSATS University Islamabad, Abbottabad Campus. Track buses in real time, pay fares contactlessly via NFC, and manage your digital transit wallet.">
+    <link rel="icon" href="logo.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --navy: #1A1B33;
+            --blue: #4A5ABF;
+            --green: #2E7D32;
+            --green-deep: #1B5E20;
+            --cobalt: #3B4CCB;
+            --bg: #FAFBFC;
+            --surface: #FFFFFF;
+            --slate: #64748B;
+            --ink: #0F172A;
+            --muted: #94A3B8;
+            --line: #E2E8F0;
+            --line-light: #F1F5F9;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
+        }
+
+        /* ── Reveal Animation ── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(32px);
+            transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .reveal-delay-1 {
+            transition-delay: 0.1s;
+        }
+
+        .reveal-delay-2 {
+            transition-delay: 0.2s;
+        }
+
+        .reveal-delay-3 {
+            transition-delay: 0.3s;
+        }
+
+        .reveal-delay-4 {
+            transition-delay: 0.4s;
+        }
+
+        .wrap {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 0 32px;
+        }
+
+        /* ━━━━━━━━━━ NAVIGATION ━━━━━━━━━━ */
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--line);
+            transition: box-shadow 0.3s;
+        }
+
+        .topbar.scrolled {
+            box-shadow: 0 1px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .topbar .wrap {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 58px;
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .topbar-brand img {
+            height: 28px;
+            width: auto;
+        }
+
+        .topbar-brand span {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--navy);
+            letter-spacing: 0.2px;
+        }
+
+        .topbar-link {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--surface);
+            background: var(--navy);
+            padding: 9px 22px;
+            text-decoration: none;
+            letter-spacing: 0.5px;
+            transition: background 0.2s, transform 0.15s;
+        }
+
+        .topbar-link:hover {
+            background: var(--cobalt);
+            transform: translateY(-1px);
+        }
+
+        .topbar-link:active {
+            transform: translateY(0);
+        }
+
+        /* ━━━━━━━━━━ HERO ━━━━━━━━━━ */
+        .hero {
+            background: var(--surface);
+            padding: 140px 32px 88px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--line) 20%, var(--line) 80%, transparent 100%);
+        }
+
+        .hero-logo {
+            width: 200px;
+            height: auto;
+            margin-bottom: 40px;
+            animation: logoEntry 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes logoEntry {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .hero-headline {
+            font-size: 42px;
+            font-weight: 900;
+            color: var(--navy);
+            letter-spacing: -1px;
+            line-height: 1.15;
+            margin-bottom: 20px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            animation: textEntry 0.8s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .hero-headline .accent {
+            color: var(--green);
+        }
+
+        @keyframes textEntry {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero-sub {
+            font-size: 16px;
+            font-weight: 400;
+            color: var(--slate);
+            max-width: 480px;
+            margin: 0 auto 14px;
+            line-height: 1.7;
+            animation: textEntry 0.8s 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .hero-campus {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--blue);
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            margin-bottom: 44px;
+            animation: textEntry 0.8s 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .hero-cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--navy);
+            color: var(--surface);
+            font-size: 14px;
+            font-weight: 700;
+            padding: 16px 40px;
+            text-decoration: none;
+            letter-spacing: 0.4px;
+            transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+            animation: textEntry 0.8s 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .hero-cta svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .hero-cta:hover {
+            background: var(--cobalt);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 76, 203, 0.25);
+        }
+
+        .hero-cta:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .hero-footnote {
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--muted);
+            animation: textEntry 0.8s 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        /* ━━━━━━━━━━ SECTION FRAMEWORK ━━━━━━━━━━ */
+        .section {
+            padding: 80px 0;
+        }
+
+        .section-surface {
+            background: var(--surface);
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--green);
+            margin-bottom: 12px;
+        }
+
+        .heading {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--navy);
+            letter-spacing: -0.5px;
+            margin-bottom: 12px;
+        }
+
+        .subheading {
+            font-size: 15px;
+            color: var(--slate);
+            max-width: 500px;
+            line-height: 1.75;
+            margin-bottom: 44px;
+        }
+
+        /* ━━━━━━━━━━ ABOUT ━━━━━━━━━━ */
+        .about-body p {
+            font-size: 16px;
+            color: var(--ink);
+            line-height: 1.85;
+            margin-bottom: 20px;
+        }
+
+        .about-body p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* ━━━━━━━━━━ FEATURES ━━━━━━━━━━ */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: var(--line);
+            border: 1px solid var(--line);
+        }
+
+        .feat {
+            background: var(--surface);
+            padding: 32px 28px;
+            transition: background 0.25s;
+        }
+
+        .feat:hover {
+            background: var(--line-light);
+        }
+
+        .feat-icon {
+            width: 36px;
+            height: 36px;
+            margin-bottom: 18px;
+        }
+
+        .feat-icon svg {
+            width: 36px;
+            height: 36px;
+            fill: none;
+            stroke: var(--navy);
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .feat h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 8px;
+        }
+
+        .feat p {
+            font-size: 13px;
+            color: var(--slate);
+            line-height: 1.7;
+        }
+
+        /* ━━━━━━━━━━ ROLES ━━━━━━━━━━ */
+        .roles-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .role {
+            border: 1px solid var(--line);
+            background: var(--surface);
+            overflow: hidden;
+            transition: border-color 0.25s, box-shadow 0.25s;
+        }
+
+        .role:hover {
+            border-color: var(--navy);
+            box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+        }
+
+        .role-head {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .role-head h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .role-head span {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted);
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            background: var(--line-light);
+            padding: 4px 10px;
+        }
+
+        .role ul {
+            list-style: none;
+            padding: 20px 24px;
+        }
+
+        .role ul li {
+            font-size: 13px;
+            color: var(--ink);
+            padding: 7px 0 7px 18px;
+            position: relative;
+            line-height: 1.5;
+        }
+
+        .role ul li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15px;
+            width: 8px;
+            height: 1.5px;
+            background: var(--green);
+        }
+
+        /* ━━━━━━━━━━ INSTALL ━━━━━━━━━━ */
+        .steps {
+            counter-reset: s;
+        }
+
+        .step {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            padding: 24px 0;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .step:last-child {
+            border-bottom: none;
+        }
+
+        .step-n {
+            counter-increment: s;
+            min-width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--navy);
+            color: var(--surface);
+            font-size: 13px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .step-n::after {
+            content: counter(s);
+        }
+
+        .step-content h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            font-size: 13px;
+            color: var(--slate);
+            line-height: 1.65;
+        }
+
+        /* ━━━━━━━━━━ REQUIREMENTS ━━━━━━━━━━ */
+        .reqs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .req {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            padding: 20px;
+            transition: border-color 0.2s;
+        }
+
+        .req:hover {
+            border-color: var(--navy);
+        }
+
+        .req dt {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .req dd {
+            font-size: 14px;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        /* ━━━━━━━━━━ TEAM ━━━━━━━━━━ */
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .member {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            padding: 36px 20px 32px;
+            text-align: center;
+            transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+        }
+
+        .member:hover {
+            border-color: var(--navy);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+        }
+
+        .member-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--line-light);
+            border: 2px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 18px;
+            transition: border-color 0.25s;
+        }
+
+        .member:hover .member-avatar {
+            border-color: var(--blue);
+        }
+
+        .member-avatar svg {
+            width: 30px;
+            height: 30px;
+            fill: var(--navy);
+        }
+
+        .member h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .member p {
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        /* ━━━━━━━━━━ FOOTER ━━━━━━━━━━ */
+        .footer {
+            padding: 36px 0;
+            text-align: center;
+            border-top: 1px solid var(--line);
+        }
+
+        .footer p {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 2px;
+        }
+
+        /* ━━━━━━━━━━ ACCENT LINE ━━━━━━━━━━ */
+        .accent-line {
+            height: 3px;
+            background: linear-gradient(90deg, var(--blue), var(--green));
+        }
+
+        /* ━━━━━━━━━━ RESPONSIVE ━━━━━━━━━━ */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 120px 24px 64px;
+            }
+
+            .hero-logo {
+                width: 160px;
+            }
+
+            .hero-headline {
+                font-size: 30px;
+            }
+
+            .hero-sub {
+                font-size: 15px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .roles-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .reqs {
+                grid-template-columns: 1fr;
+            }
+
+            .team-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .heading {
+                font-size: 24px;
+            }
+
+            .hero-cta {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .section {
+                padding: 60px 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero {
+                padding: 100px 20px 48px;
+            }
+
+            .hero-logo {
+                width: 140px;
+                margin-bottom: 28px;
+            }
+
+            .hero-headline {
+                font-size: 26px;
+            }
+
+            .wrap {
+                padding: 0 20px;
+            }
+
+            .topbar-brand span {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="accent-line"></div>
+    <!-- Navigation -->
+    <nav class="topbar" id="topbar">
+        <div class="wrap">
+            <a href="#" class="topbar-brand">
+                <img src="logo.png" alt="Commutas">
+                <span>Commutas</span>
+            </a>
+            <a href="https://github.com/Wafa-Amjad/Commutas/releases/latest" class="topbar-link" target="_blank"
+                rel="noopener">Download APK</a>
+        </div>
+    </nav>
+    <!-- Hero -->
+    <section class="hero">
+        <img src="logo.png" alt="Commutas" class="hero-logo">
+        <h1 class="hero-headline">Campus transit,<br><span class="accent">reimagined.</span></h1>
+        <p class="hero-sub">A complete transit management platform that replaces cash fares, manual ticketing, and
+            unpredictable schedules with a single mobile application.</p>
+        <p class="hero-campus">Built for COMSATS University Islamabad, Abbottabad Campus</p>
+        <a href="https://github.com/Wafa-Amjad/Commutas/releases/latest" class="hero-cta" target="_blank"
+            rel="noopener">
+            <svg viewBox="0 0 24 24">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+            Download for Android
+        </a>
+        <p class="hero-footnote">Android 6.0 and above required</p>
+    </section>
+    <!-- About -->
+    <section class="section">
+        <div class="wrap">
+            <p class="eyebrow reveal">About</p>
+            <h2 class="heading reveal reveal-delay-1">What is Commutas</h2>
+            <div class="about-body">
+                <p class="reveal reveal-delay-2">Commutas is a full-stack campus transit platform built for the students
+                    and transport staff of COMSATS University Islamabad, Abbottabad Campus. It digitizes the entire bus
+                    transport experience — from the moment a student checks a schedule to the moment they tap their
+                    phone and board.</p>
+                <p class="reveal reveal-delay-3">Students can load money into a digital wallet through an online payment
+                    gateway, track active university buses on a live GPS-powered map, check remaining seat capacity in
+                    real time, and pay their fare contactlessly by holding their phone near the driver's device using
+                    NFC. Drivers manage their full trip lifecycle from within the same application, collecting fares,
+                    broadcasting their location, and handling departure sessions.</p>
+                <p class="reveal reveal-delay-4">The platform also includes a web-based administrative dashboard where
+                    transport managers can configure routes, assign vehicles, manage departure schedules, and oversee
+                    the entire bus network from a single interface.</p>
+            </div>
+        </div>
+    </section>
+    <!-- Features -->
+    <section class="section section-surface">
+        <div class="wrap">
+            <p class="eyebrow reveal">Capabilities</p>
+            <h2 class="heading reveal reveal-delay-1">What it offers</h2>
+            <p class="subheading reveal reveal-delay-2">Every component of campus transit, unified into one cohesive
+                platform.</p>
+            <div class="features-grid reveal reveal-delay-3">
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                            <path d="M2 17l10 5 10-5" />
+                            <path d="M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <h3>NFC Contactless Payments</h3>
+                    <p>Pay your fare by tapping your phone against the driver's device. Uses Android Host Card Emulation
+                        to turn your smartphone into a contactless transit card.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <rect x="5" y="2" width="14" height="20" rx="2" />
+                            <line x1="12" y1="18" x2="12" y2="18.01" />
+                        </svg>
+                    </div>
+                    <h3>QR Code Fallback</h3>
+                    <p>Devices without NFC hardware are fully supported through a dynamic QR code system. The driver
+                        scans the code and the fare is processed identically.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="10" r="3" />
+                            <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 10-16 0c0 3 2.7 7 8 11.7z" />
+                        </svg>
+                    </div>
+                    <h3>Live Bus Tracking</h3>
+                    <p>See every active bus on a real-time interactive map with GPS positioning, estimated arrival
+                        times, route polylines, and live seat occupancy indicators.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <rect x="1" y="4" width="22" height="16" rx="2" />
+                            <line x1="1" y1="10" x2="23" y2="10" />
+                        </svg>
+                    </div>
+                    <h3>Digital Transit Wallet</h3>
+                    <p>Top up your wallet through an integrated payment gateway. View your full transaction history
+                        including credits, fare deductions, and pending payments.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <rect x="3" y="11" width="18" height="11" rx="2" />
+                            <path d="M7 11V7a5 5 0 0110 0v4" />
+                        </svg>
+                    </div>
+                    <h3>Portal Authentication</h3>
+                    <p>Sign up with your COMSATS portal credentials. Your student identity is verified automatically.
+                        Portal passwords are never stored by the application.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">
+                        <svg viewBox="0 0 24 24">
+                            <rect x="2" y="3" width="20" height="14" rx="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                    </div>
+                    <h3>Admin Web Dashboard</h3>
+                    <p>Transport administrators manage routes, departure time slots, vehicle registrations, and driver
+                        assignments from a centralized web portal.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Roles -->
+    <section class="section">
+        <div class="wrap">
+            <p class="eyebrow reveal">Two Interfaces</p>
+            <h2 class="heading reveal reveal-delay-1">Students and Drivers</h2>
+            <p class="subheading reveal reveal-delay-2">A single application serving two distinct roles with
+                purpose-built interfaces for each.</p>
+            <div class="roles-grid">
+                <div class="role reveal reveal-delay-2">
+                    <div class="role-head">
+                        <h3>Student Interface</h3>
+                        <span>5 Tabs</span>
+                    </div>
+                    <ul>
+                        <li>Dashboard with wallet balance and preferred route</li>
+                        <li>Live bus tracking on interactive maps</li>
+                        <li>NFC and QR contactless fare payment</li>
+                        <li>Wallet management and online top-up</li>
+                        <li>Profile, biometric login, and route preferences</li>
+                    </ul>
+                </div>
+                <div class="role reveal reveal-delay-3">
+                    <div class="role-head">
+                        <h3>Driver Interface</h3>
+                        <span>3 Tabs</span>
+                    </div>
+                    <ul>
+                        <li>Vehicle dashboard and session overview</li>
+                        <li>NFC reader and QR scanner for fare collection</li>
+                        <li>Route schedule selection and session lifecycle</li>
+                        <li>Live GPS broadcasting during transit</li>
+                        <li>Boarded passenger manifest</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Install -->
+    <section class="section section-surface">
+        <div class="wrap">
+            <p class="eyebrow reveal">Getting Started</p>
+            <h2 class="heading reveal reveal-delay-1">How to install</h2>
+            <p class="subheading reveal reveal-delay-2">Three steps. Under a minute.</p>
+            <div class="steps reveal reveal-delay-3">
+                <div class="step">
+                    <div class="step-n"></div>
+                    <div class="step-content">
+                        <h4>Download the APK</h4>
+                        <p>Tap the download button at the top of this page. The latest signed build will be downloaded
+                            from the releases page.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-n"></div>
+                    <div class="step-content">
+                        <h4>Allow installation</h4>
+                        <p>When prompted, enable "Install from unknown sources" for your browser or file manager. This
+                            is a standard one-time Android setting for applications distributed outside the Play Store.
+                        </p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-n"></div>
+                    <div class="step-content">
+                        <h4>Open and sign in</h4>
+                        <p>Launch Commutas and sign in with your COMSATS student portal registration number. Your
+                            identity will be verified automatically through the university portal.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Requirements -->
+    <section class="section">
+        <div class="wrap">
+            <p class="eyebrow reveal">System</p>
+            <h2 class="heading reveal reveal-delay-1">Requirements</h2>
+            <div style="height: 28px"></div>
+            <div class="reqs reveal reveal-delay-2">
+                <dl class="req">
+                    <dt>Platform</dt>
+                    <dd>Android 6.0+</dd>
+                </dl>
+                <dl class="req">
+                    <dt>NFC Payments</dt>
+                    <dd>NFC hardware (QR fallback available)</dd>
+                </dl>
+                <dl class="req">
+                    <dt>Availability</dt>
+                    <dd>Android only</dd>
+                </dl>
+            </div>
+        </div>
+    </section>
+    <!-- Team -->
+    <section class="section section-surface">
+        <div class="wrap">
+            <p class="eyebrow reveal">The Team</p>
+            <h2 class="heading reveal reveal-delay-1">Developed by</h2>
+            <div style="height: 28px"></div>
+            <div class="team-grid">
+                <div class="member reveal reveal-delay-1">
+                    <div class="member-avatar">
+                        <!-- Male avatar -->
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 4a4 4 0 110 8 4 4 0 010-8zm0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z" />
+                        </svg>
+                    </div>
+                    <h4>Mubashir Shahzaib</h4>
+                    <p>FA23-BCS-065</p>
+                </div>
+                <div class="member reveal reveal-delay-2">
+                    <div class="member-avatar">
+                        <!-- Female avatar -->
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 4a4 4 0 110 8 4 4 0 010-8zM4 18c0-2.21 3.58-4 8-4s8 1.79 8 4v2H4v-2z" />
+                            <path d="M14.5 5.5c.5-1.5-.5-3.5-.5-3.5s-2 1-2.5 3" fill="none" stroke="currentColor"
+                                stroke-width="0.8" />
+                        </svg>
+                    </div>
+                    <h4>Wafa Amjad</h4>
+                    <p>FA23-BCS-133</p>
+                </div>
+                <div class="member reveal reveal-delay-3">
+                    <div class="member-avatar">
+                        <!-- Female avatar -->
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 4a4 4 0 110 8 4 4 0 010-8zM4 18c0-2.21 3.58-4 8-4s8 1.79 8 4v2H4v-2z" />
+                            <path d="M14.5 5.5c.5-1.5-.5-3.5-.5-3.5s-2 1-2.5 3" fill="none" stroke="currentColor"
+                                stroke-width="0.8" />
+                        </svg>
+                    </div>
+                    <h4>Roonaq Imtiaz</h4>
+                    <p>FA23-BCS-150</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="wrap">
+            <p>Commutas — Campus Transit Platform</p>
+            <p>COMSATS University Islamabad, Abbottabad Campus</p>
+        </div>
+    </footer>
+    <script>
+        // Scroll reveal
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+        // Navbar shadow on scroll
+        const topbar = document.getElementById('topbar');
+        window.addEventListener('scroll', () => {
+            topbar.classList.toggle('scrolled', window.scrollY > 10);
+        }, { passive: true });
+    </script>
+</body>
+
+</html>

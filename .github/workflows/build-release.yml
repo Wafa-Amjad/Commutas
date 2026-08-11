@@ -1,0 +1,67 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Decode keystore from secrets
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/commutas-release.jks
+
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.STORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=../android/commutas-release.jks
+          EOF
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Commutas-${VERSION}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Commutas ${{ github.ref_name }}"
+          body: |
+            ## Commutas ${{ github.ref_name }}
+
+            Download the APK below and install it on your Android device.
+
+            **Installation:** Enable "Install from unknown sources" in your phone's settings if prompted.
+          files: build/app/outputs/flutter-apk/Commutas-*.apk
+          draft: false
+          prerelease: false
