@@ -4,10 +4,12 @@ import 'api_interceptor.dart';
 
 class AuthService {
   static const String serverAddress = 'https://commutas.onrender.com';
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: serverAddress,
-    headers: {'Content-Type': 'application/json'},
-  ))..interceptors.add(ApiInterceptor());
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: serverAddress,
+      headers: {'Content-Type': 'application/json'},
+    ),
+  )..interceptors.add(ApiInterceptor());
 
   // 1. SIGN UP / REGISTER METHOD
   Future<Map<String, dynamic>?> registerStudent({
@@ -16,18 +18,24 @@ class AuthService {
     required String appPassword,
   }) async {
     try {
-      final response = await _dio.post('/auth/register', data: {
-        'reg_no': regNo,
-        'portal_password': portalPassword,
-        'app_password': appPassword,
-      });
-      
+      final response = await _dio.post(
+        '/auth/register',
+        data: {
+          'reg_no': regNo,
+          'portal_password': portalPassword,
+          'app_password': appPassword,
+        },
+      );
+
       if (response.statusCode == 201) {
         return response.data; // Isme access_token aur student data hoga
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Sign Up Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Sign Up Failed: ${e.response?.data['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -38,17 +46,20 @@ class AuthService {
     required String appPassword,
   }) async {
     try {
-      final response = await _dio.post('/auth/login', data: {
-        'reg_no': regNo,
-        'app_password': appPassword,
-      });
+      final response = await _dio.post(
+        '/auth/login',
+        data: {'reg_no': regNo, 'app_password': appPassword},
+      );
 
       if (response.statusCode == 200) {
         return response.data; // Isme access_token aur student data hoga
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Login Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Login Failed: ${e.response?.data['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -59,17 +70,20 @@ class AuthService {
     required String password,
   }) async {
     try {
-      final response = await _dio.post('/vehicles/login', data: {
-        'registration_no': registrationNo,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/vehicles/login',
+        data: {'registration_no': registrationNo, 'password': password},
+      );
 
       if (response.statusCode == 200) {
         return response.data; // Contains access_token and vehicle profile data
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Vehicle Login Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Vehicle Login Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -81,9 +95,7 @@ class AuthService {
     try {
       final response = await _dio.get(
         '/vehicles/profile',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
       if (response.statusCode == 200) {
@@ -91,7 +103,10 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Get Vehicle Profile Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Get Vehicle Profile Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -103,18 +118,24 @@ class AuthService {
     required String newPassword,
   }) async {
     try {
-      final response = await _dio.post('/auth/reset-password', data: {
-        'reg_no': regNo,
-        'portal_password': portalPassword,
-        'new_password': newPassword,
-      });
+      final response = await _dio.post(
+        '/auth/reset-password',
+        data: {
+          'reg_no': regNo,
+          'portal_password': portalPassword,
+          'new_password': newPassword,
+        },
+      );
 
       if (response.statusCode == 200) {
         return response.data; // Contains success message detail
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Reset Password Failed: ${e.response?.data['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Reset Password Failed: ${e.response?.data['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -127,10 +148,7 @@ class AuthService {
   }) async {
     try {
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          imageBytes,
-          filename: fileName,
-        ),
+        'file': MultipartFile.fromBytes(imageBytes, filename: fileName),
       });
 
       final response = await _dio.post(
@@ -164,9 +182,7 @@ class AuthService {
     try {
       final response = await _dio.post(
         '/api/wallet/generate-payment-token',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
       if (response.statusCode == 201) {
@@ -174,7 +190,10 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Generate Payment Token Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Generate Payment Token Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -183,11 +202,7 @@ class AuthService {
     try {
       final response = await _dio.delete(
         '/auth/avatar',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.statusCode == 200;
     } on DioException catch (e) {
@@ -195,7 +210,7 @@ class AuthService {
         'Delete Avatar Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'AuthService',
       );
-      return false;
+      rethrow;
     }
   }
 
@@ -211,7 +226,10 @@ class AuthService {
       }
       return [];
     } on DioException catch (e) {
-      developer.log('Get Assigned Schedules Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Get Assigned Schedules Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -228,11 +246,15 @@ class AuthService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       if (response.statusCode == 201) {
-        return response.data; // Contains session_id, vehicle_no, route_schedule_id, status
+        return response
+            .data; // Contains session_id, vehicle_no, route_schedule_id, status
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Start Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Start Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -250,7 +272,10 @@ class AuthService {
       );
       return response.statusCode == 200;
     } on DioException catch (e) {
-      developer.log('Start Vehicle Trip Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Start Vehicle Trip Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -268,7 +293,10 @@ class AuthService {
       );
       return response.statusCode == 200;
     } on DioException catch (e) {
-      developer.log('End Vehicle Trip Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'End Vehicle Trip Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -282,10 +310,7 @@ class AuthService {
     try {
       final response = await _dio.post(
         '/vehicles/session/fare-collect',
-        data: {
-          'session_id': sessionId,
-          'token_id': tokenId,
-        },
+        data: {'session_id': sessionId, 'token_id': tokenId},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       if (response.statusCode == 200 && response.data != null) {
@@ -293,7 +318,10 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Collect Vehicle Fare Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Collect Vehicle Fare Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       return null;
     }
   }
@@ -313,7 +341,10 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Get Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Get Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       rethrow;
     }
   }
@@ -332,7 +363,10 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Get Active Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Get Active Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       return null;
     }
   }
@@ -350,9 +384,14 @@ class AuthService {
       if (response.statusCode == 200) {
         return response.data;
       }
-      return null;
+      throw const FormatException(
+        'Payment token status response was unavailable.',
+      );
     } on DioException catch (e) {
-      developer.log('Get Payment Token Status Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
+      developer.log(
+        'Get Payment Token Status Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
       return null;
     }
   }
@@ -371,10 +410,11 @@ class AuthService {
       }
       return null;
     } on DioException catch (e) {
-      developer.log('Get Student Profile Failed: ${e.response?.data?['detail'] ?? e.message}', name: 'AuthService');
-      return null;
+      developer.log(
+        'Get Student Profile Failed: ${e.response?.data?['detail'] ?? e.message}',
+        name: 'AuthService',
+      );
+      rethrow;
     }
   }
 }
-
-

@@ -11,8 +11,9 @@ import 'reset_password_screen.dart';
 import 'login_signup_screen.dart';
 import 'services/route_service.dart';
 import 'services/auth_service.dart';
+import 'services/friendly_error_message.dart';
 import 'dart:developer' as developer;
-import 'package:dio/dio.dart';
+import '../widgets/commutas_error_state.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String studentName;
@@ -39,8 +40,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late String? _avatarPath;
-  late String _avatarType;
+  String? _avatarPath;
+  String _avatarType = 'emoji';
   String _avatarCacheBuster = '';
 
   final BiometricService _biometricService = BiometricService();
@@ -50,10 +51,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _preferredRouteId;
   String? _preferredRouteName;
   List<Map<String, dynamic>> _availableRoutes = [];
+  bool _isLoadingProfile = true;
+  String? _profileError;
+  bool _isLoadingRoutes = true;
+  String? _routesError;
 
   @override
   void initState() {
     super.initState();
+    _avatarPath = widget.initialAvatarPath;
+    _avatarType = widget.initialAvatarType;
     _loadBiometricStatus();
     _loadPreferences().then((_) {
       _fetchRoutesAndResolve();
@@ -64,7 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('session_token') ?? '';
     final preferredRouteId = prefs.getString('session_preferred_route_id');
-    
+
     if (mounted) {
       setState(() {
         _accessToken = token;
@@ -75,14 +82,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (token.isNotEmpty) {
       _fetchProfileData(token);
+    } else if (mounted) {
+      setState(() {
+        _isLoadingProfile = false;
+        _isLoadingRoutes = false;
+      });
     }
   }
 
   Future<void> _fetchProfileData(String token) async {
+    if (mounted) {
+      setState(() {
+        _isLoadingProfile = true;
+        _profileError = null;
+      });
+    }
     try {
       final authService = AuthService();
       final profile = await authService.getStudentProfile(token: token);
-      if (profile != null && mounted) {
+      if (profile == null) {
+        throw const FormatException('Profile response was unavailable.');
+      }
+      if (mounted) {
         final avatarUrl = profile['avatar_url'];
         setState(() {
           if (avatarUrl != null) {
@@ -95,18 +116,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
         widget.onAvatarChanged(_avatarPath, _avatarType);
       }
-    } catch (_) {}
+    } catch (e) {
+      developer.log('Profile loading failed: $e', name: 'ProfileScreen');
+      if (mounted) {
+        setState(() {
+          _profileError = friendlyErrorMessage(
+            e,
+            fallback: 'Unable to load your profile. Please try again.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingProfile = false);
+    }
   }
 
   Future<void> _fetchRoutesAndResolve() async {
     if (_accessToken == null || _accessToken!.isEmpty) return;
-    final routeService = RouteService();
-    final routes = await routeService.fetchRoutes(token: _accessToken!);
-    if (routes.isNotEmpty && mounted) {
+    if (mounted) {
       setState(() {
-        _availableRoutes = routes;
+        _isLoadingRoutes = true;
+        _routesError = null;
       });
+    }
+    try {
+      final routeService = RouteService();
+      final routes = await routeService.fetchRoutes(token: _accessToken!);
+      if (mounted) {
+        setState(() {
+          _availableRoutes = routes;
+          _routesError = null;
+        });
+      }
       _resolveRouteName();
+    } catch (e) {
+      developer.log('Route loading failed: $e', name: 'ProfileScreen');
+      if (mounted) {
+        setState(() {
+          _routesError = friendlyErrorMessage(
+            e,
+            fallback: 'Unable to load routes. Please try again.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingRoutes = false);
     }
   }
 
@@ -164,7 +218,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      widget.onLoadingChanged?.call(true, 'UPLOADING PICTURE', 'Updating your profile pass photo...');
+      widget.onLoadingChanged?.call(
+        true,
+        'UPLOADING PICTURE',
+        'Updating your profile pass photo...',
+      );
 
       try {
         final authService = AuthService();
@@ -178,13 +236,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           setState(() {
             _avatarType = 'url';
             _avatarPath = avatarUrl;
-            _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch.toString();
+            _avatarCacheBuster = DateTime.now().millisecondsSinceEpoch
+                .toString();
           });
           widget.onAvatarChanged(_avatarPath, _avatarType);
 
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Profile picture uploaded successfully.')),
+              const SnackBar(
+                content: Text('Profile picture uploaded successfully.'),
+              ),
             );
           }
         } else {
@@ -192,20 +253,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } catch (e) {
         developer.log('Profile image upload failed: $e', name: 'ProfileScreen');
-        String errorMsg = 'Failed to upload profile picture. Please try again.';
-        if (e is DioException) {
-          if (e.type == DioExceptionType.connectionTimeout || 
-              e.type == DioExceptionType.receiveTimeout || 
-              e.type == DioExceptionType.connectionError) {
-            errorMsg = 'No internet connection. Please check your network and try again.';
-          } else if (e.response?.data?['detail'] != null) {
-            errorMsg = e.response!.data['detail'].toString();
-          }
-        }
+        final errorMsg = friendlyErrorMessage(
+          e,
+          fallback: 'Unable to upload your profile picture. Please try again.',
+        );
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errorMsg)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMsg)));
         }
       } finally {
         widget.onLoadingChanged?.call(false, null, null);
@@ -214,7 +269,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _deleteAvatar(BuildContext context) async {
-    widget.onLoadingChanged?.call(true, 'REMOVING PICTURE', 'Clearing your profile pass photo...');
+    widget.onLoadingChanged?.call(
+      true,
+      'REMOVING PICTURE',
+      'Clearing your profile pass photo...',
+    );
 
     try {
       final authService = AuthService();
@@ -230,7 +289,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profile picture removed successfully.')),
+            const SnackBar(
+              content: Text('Profile picture removed successfully.'),
+            ),
           );
         }
       } else {
@@ -238,20 +299,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       developer.log('Profile image deletion failed: $e', name: 'ProfileScreen');
-      String errorMsg = 'Failed to remove profile picture. Please try again.';
-      if (e is DioException) {
-        if (e.type == DioExceptionType.connectionTimeout || 
-            e.type == DioExceptionType.receiveTimeout || 
-            e.type == DioExceptionType.connectionError) {
-          errorMsg = 'No internet connection. Please check your network and try again.';
-        } else if (e.response?.data?['detail'] != null) {
-          errorMsg = e.response!.data['detail'].toString();
-        }
-      }
+      final errorMsg = friendlyErrorMessage(
+        e,
+        fallback: 'Unable to remove your profile picture. Please try again.',
+      );
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } finally {
       widget.onLoadingChanged?.call(false, null, null);
@@ -262,9 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (context) {
         final hasPhoto = _avatarPath != null && _avatarType == 'url';
         return SafeArea(
@@ -272,8 +325,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_library_outlined, color: CommutasColors.primaryNavy),
-                title: Text('Upload Photo', style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                leading: const Icon(
+                  Icons.photo_library_outlined,
+                  color: CommutasColors.primaryNavy,
+                ),
+                title: Text(
+                  'Upload Photo',
+                  style: CommutasTextStyles.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _changeAvatar(context);
@@ -281,15 +342,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               if (hasPhoto)
                 ListTile(
-                  leading: const Icon(Icons.delete_outline, color: CommutasColors.danger),
-                  title: Text('Remove Photo', style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.danger, fontWeight: FontWeight.w600)),
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: CommutasColors.danger,
+                  ),
+                  title: Text(
+                    'Remove Photo',
+                    style: CommutasTextStyles.bodyMedium.copyWith(
+                      color: CommutasColors.danger,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _deleteAvatar(context);
                   },
                 ),
               ListTile(
-                leading: const Icon(Icons.close_rounded, color: CommutasColors.slateMuted),
+                leading: const Icon(
+                  Icons.close_rounded,
+                  color: CommutasColors.slateMuted,
+                ),
                 title: Text('Cancel', style: CommutasTextStyles.bodyMedium),
                 onTap: () => Navigator.pop(context),
               ),
@@ -314,6 +387,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           children: [
             _buildDigitalTransitCard(context),
+            if (_isLoadingProfile)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(
+                  minHeight: 2,
+                  color: CommutasColors.emeraldGreen,
+                  backgroundColor: CommutasColors.lightGreenBg,
+                ),
+              ),
+            if (_profileError != null) ...[
+              const SizedBox(height: 12),
+              CommutasErrorBanner(
+                message: _profileError!,
+                onRetry: () {
+                  if (_accessToken != null && _accessToken!.isNotEmpty) {
+                    _fetchProfileData(_accessToken!);
+                  }
+                },
+              ),
+            ],
+            if (_routesError != null) ...[
+              const SizedBox(height: 12),
+              CommutasErrorBanner(
+                message: _routesError!,
+                onRetry: _fetchRoutesAndResolve,
+              ),
+            ],
             const SizedBox(height: 24),
             _buildTransitPreferencesSection(),
             _buildRoadDivider(),
@@ -333,9 +433,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: SizedBox(
         height: 12,
         width: double.infinity,
-        child: const CustomPaint(
-          painter: _RoadDividerPainter(),
-        ),
+        child: const CustomPaint(painter: _RoadDividerPainter()),
       ),
     );
   }
@@ -343,7 +441,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildDigitalTransitCard(BuildContext context) {
     Widget avatarChild;
     if (_avatarPath == null || _avatarType == 'emoji') {
-      avatarChild = const Icon(Icons.person, size: 64, color: CommutasColors.primaryNavy);
+      avatarChild = const Icon(
+        Icons.person,
+        size: 64,
+        color: CommutasColors.primaryNavy,
+      );
     } else if (_avatarType == 'url') {
       avatarChild = Image.network(
         '$_avatarPath?t=$_avatarCacheBuster',
@@ -351,10 +453,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
           return const Center(
-            child: CircularProgressIndicator(color: CommutasColors.emeraldGreen, strokeWidth: 2),
+            child: CircularProgressIndicator(
+              color: CommutasColors.emeraldGreen,
+              strokeWidth: 2,
+            ),
           );
         },
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 64, color: CommutasColors.primaryNavy),
+        errorBuilder: (context, error, stackTrace) => const Icon(
+          Icons.person,
+          size: 64,
+          color: CommutasColors.primaryNavy,
+        ),
       );
     } else {
       avatarChild = Image.file(File(_avatarPath!), fit: BoxFit.cover);
@@ -372,9 +481,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Positioned.fill(
             child: Opacity(
               opacity: 0.05,
-              child: CustomPaint(
-                painter: _TransportPatternPainter(),
-              ),
+              child: CustomPaint(painter: _TransportPatternPainter()),
             ),
           ),
           Padding(
@@ -382,7 +489,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                
                 // Profile Area
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -402,7 +508,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 decoration: BoxDecoration(
                                   color: CommutasColors.white,
                                   borderRadius: BorderRadius.zero,
-                                  border: Border.all(color: CommutasColors.emeraldGreen, width: 2),
+                                  border: Border.all(
+                                    color: CommutasColors.emeraldGreen,
+                                    width: 2,
+                                  ),
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.zero,
@@ -418,7 +527,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: CommutasColors.accentCobalt,
                                     borderRadius: BorderRadius.zero,
                                   ),
-                                  child: const Icon(Icons.add, color: Colors.white, size: 12),
+                                  child: const Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                    size: 12,
+                                  ),
                                 ),
                               ),
                             ],
@@ -456,7 +569,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              const Icon(Icons.verified, color: Colors.blue, size: 18),
+                              const Icon(
+                                Icons.verified,
+                                color: Colors.blue,
+                                size: 18,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 4),
@@ -479,7 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Bottom Label
                 Center(
                   child: Column(
@@ -495,7 +612,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 4),
                       Text(
                         'Tap & Travel with Ease',
-                        style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white54, fontSize: 9),
+                        style: CommutasTextStyles.bodySmall.copyWith(
+                          color: Colors.white54,
+                          fontSize: 9,
+                        ),
                       ),
                     ],
                   ),
@@ -519,11 +639,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showRouteSelectionDialog() {
+    if (_isLoadingRoutes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Loading routes from Commutas... Please wait.'),
+        ),
+      );
+      return;
+    }
+    if (_routesError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_routesError!)));
+      _fetchRoutesAndResolve();
+      return;
+    }
     if (_availableRoutes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Loading routes from server... Please wait.')),
+        const SnackBar(content: Text('No routes are currently available.')),
       );
-      _fetchRoutesAndResolve();
       return;
     }
 
@@ -568,16 +702,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       title: Text(
                         routeName,
                         style: CommutasTextStyles.bodyMedium.copyWith(
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? CommutasColors.emeraldGreen
+                              : CommutasColors.primaryNavy,
                         ),
                       ),
                       leading: Icon(
                         Icons.directions_bus_filled,
-                        color: isSelected ? CommutasColors.emeraldGreen : CommutasColors.slateMuted,
+                        color: isSelected
+                            ? CommutasColors.emeraldGreen
+                            : CommutasColors.slateMuted,
                       ),
                       trailing: isSelected
-                          ? const Icon(Icons.check_circle, color: CommutasColors.emeraldGreen)
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: CommutasColors.emeraldGreen,
+                            )
                           : null,
                       onTap: () {
                         Navigator.pop(context);
@@ -597,32 +740,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _updatePreferredRoute(String routeId) async {
     if (_accessToken == null || _accessToken!.isEmpty) return;
 
-    final routeService = RouteService();
-    final success = await routeService.savePreferredRoute(
-      token: _accessToken!,
-      routeId: routeId,
-    );
+    try {
+      final routeService = RouteService();
+      final success = await routeService.savePreferredRoute(
+        token: _accessToken!,
+        routeId: routeId,
+      );
 
-    if (success) {
+      if (!success) {
+        throw const FormatException(
+          'Preferred route update was not confirmed.',
+        );
+      }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('session_preferred_route_id', routeId);
-      
+
       if (mounted) {
         setState(() {
           _preferredRouteId = routeId;
+          _routesError = null;
         });
       }
       _resolveRouteName();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Preferred route updated successfully.')),
+          const SnackBar(
+            content: Text('Preferred route updated successfully.'),
+          ),
         );
       }
-    } else {
+    } catch (e) {
+      developer.log('Preferred route update failed: $e', name: 'ProfileScreen');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update preferred route. Please try again.')),
+          SnackBar(
+            content: Text(
+              friendlyErrorMessage(
+                e,
+                fallback:
+                    'Unable to update your preferred route. Please try again.',
+              ),
+            ),
+          ),
         );
       }
     }
@@ -634,7 +795,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text('Transit Preferences', style: CommutasTextStyles.heading2.copyWith(fontSize: 16)),
+          child: Text(
+            'Transit Preferences',
+            style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
+          ),
         ),
         Container(
           decoration: CommutasShapes.cardDecoration,
@@ -659,14 +823,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text('Security', style: CommutasTextStyles.heading2.copyWith(fontSize: 16)),
+          child: Text(
+            'Security',
+            style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
+          ),
         ),
         Container(
           decoration: CommutasShapes.cardDecoration,
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Row(
                   children: [
                     Container(
@@ -675,16 +845,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: CommutasColors.lightGreenBg,
                         borderRadius: BorderRadius.zero,
                       ),
-                      child: const Icon(Icons.fingerprint, color: CommutasColors.emeraldGreen, size: 24),
+                      child: const Icon(
+                        Icons.fingerprint,
+                        color: CommutasColors.emeraldGreen,
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Biometric Login', style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                          Text(
+                            'Biometric Login',
+                            style: CommutasTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           const SizedBox(height: 2),
-                          Text('Enable fingerprint for quick sign-in', style: CommutasTextStyles.bodySmall),
+                          Text(
+                            'Enable fingerprint for quick sign-in',
+                            style: CommutasTextStyles.bodySmall,
+                          ),
                         ],
                       ),
                     ),
@@ -696,7 +878,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: CommutasColors.lineBorder, indent: 16),
+              const Divider(
+                height: 1,
+                color: CommutasColors.lineBorder,
+                indent: 16,
+              ),
               _buildClickableRow(
                 icon: Icons.lock,
                 title: 'Change App Password',
@@ -742,7 +928,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    title,
+                    style: CommutasTextStyles.bodyMedium.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 2),
                     Text(subtitle, style: CommutasTextStyles.bodySmall),
@@ -750,7 +941,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: CommutasColors.lineBorder, size: 24),
+            const Icon(
+              Icons.chevron_right,
+              color: CommutasColors.lineBorder,
+              size: 24,
+            ),
           ],
         ),
       ),
@@ -766,18 +961,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await prefs.setBool('session_active', false);
           if (context.mounted) {
             Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => const LoginSignupScreen()),
+              MaterialPageRoute(
+                builder: (context) => const LoginSignupScreen(),
+              ),
               (route) => false,
             );
           }
         },
         style: OutlinedButton.styleFrom(
           foregroundColor: CommutasColors.danger,
-          side: BorderSide(color: CommutasColors.danger.withOpacity(0.8), width: 1.5),
+          side: BorderSide(
+            color: CommutasColors.danger.withOpacity(0.8),
+            width: 1.5,
+          ),
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         ),
-        child: Text('LOGOUT SESSION', style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.danger)),
+        child: Text(
+          'LOGOUT SESSION',
+          style: CommutasTextStyles.labelBold.copyWith(
+            color: CommutasColors.danger,
+          ),
+        ),
       ),
     );
   }
@@ -793,7 +998,7 @@ class _TransportPatternPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     const double step = 20.0;
-    
+
     // Draw diagonal grid lines
     for (double i = -size.height; i < size.width; i += step) {
       canvas.drawLine(
@@ -802,12 +1007,13 @@ class _TransportPatternPainter extends CustomPainter {
         paint,
       );
     }
-    
+
     // Draw circles at intersections randomly to represent nodes/stops
     final fillPaint = Paint()..color = Colors.white;
     for (double x = 0; x < size.width; x += step * 2) {
       for (double y = 0; y < size.height; y += step * 2) {
-        if ((x + y) % 3 == 0) { // arbitrary condition for sparsity
+        if ((x + y) % 3 == 0) {
+          // arbitrary condition for sparsity
           canvas.drawCircle(Offset(x, y), 2, fillPaint);
         }
       }
@@ -850,7 +1056,6 @@ class _RoadDividerPainter extends CustomPainter {
   bool shouldRepaint(covariant _RoadDividerPainter oldDelegate) => false;
 }
 
-
 // ──────────────────────────────────────────────────────────
 // Custom Uploading Dialog with Bouncing Bus animation
 // ──────────────────────────────────────────────────────────
@@ -867,7 +1072,8 @@ class BusUploadLoadingDialog extends StatefulWidget {
   State<BusUploadLoadingDialog> createState() => _BusUploadLoadingDialogState();
 }
 
-class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog> with SingleTickerProviderStateMixin {
+class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -890,14 +1096,11 @@ class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog> with Si
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+        border: Border(
+          top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+        ),
       ),
-      padding: const EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: 40,
-      ),
+      padding: const EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 40),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -917,7 +1120,10 @@ class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog> with Si
           const SizedBox(height: 24),
           Text(
             widget.title,
-            style: CommutasTextStyles.labelBold.copyWith(letterSpacing: 1.5, fontSize: 13),
+            style: CommutasTextStyles.labelBold.copyWith(
+              letterSpacing: 1.5,
+              fontSize: 13,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
@@ -932,7 +1138,9 @@ class _BusUploadLoadingDialogState extends State<BusUploadLoadingDialog> with Si
             color: CommutasColors.lightGreenBg,
             child: const LinearProgressIndicator(
               backgroundColor: CommutasColors.lightGreenBg,
-              valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                CommutasColors.emeraldGreen,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -976,12 +1184,18 @@ class UploadBusPainter extends CustomPainter {
     final stripePaint = Paint()
       ..color = CommutasColors.emeraldGreen
       ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8),
+      stripePaint,
+    );
 
     final windowFillPaint = Paint()
       ..color = const Color(0xFFE8F5E9)
       ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18),
+      windowFillPaint,
+    );
 
     for (int i = 0; i < 3; i++) {
       final double wx = left + 32.0 + i * 20.0;
@@ -1010,25 +1224,61 @@ class UploadBusPainter extends CustomPainter {
     canvas.drawLine(Offset(left, bottom), Offset(right, bottom), paint);
     canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
 
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
-    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 24, top + 6),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 24, top + 6),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 18),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 8, top + 18),
+      paint,
+    );
 
     for (int i = 0; i < 3; i++) {
       final double wx = left + 32.0 + i * 20.0;
       canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), paint);
     }
 
-    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    canvas.drawLine(
+      Offset(left, bottom - 10),
+      Offset(left - 4, bottom - 10),
+      paint,
+    );
     final rayPaint = Paint()
       ..color = Colors.orangeAccent
       ..strokeWidth = 1.5;
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 14),
+      rayPaint,
+    );
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 6),
+      rayPaint,
+    );
 
-    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
-    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 2),
+      Offset(left + 4, bottom - 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(right - 4, bottom - 2),
+      Offset(right + 4, bottom - 2),
+      paint,
+    );
 
     final double wheelRadius = 8.0;
     final double leftWheelX = left + 20.0;
@@ -1040,32 +1290,48 @@ class UploadBusPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
-    
+
     final angle = animationValue * 2 * math.pi;
     final spokePaint = Paint()
       ..color = Colors.white
       ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
-    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(
+      Offset(rightWheelX, wheelY),
+      wheelRadius - 1.0,
+      wheelFill,
+    );
     canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
@@ -1080,7 +1346,8 @@ class UploadBusPainter extends CustomPainter {
     final double exhaustX = right + 2;
     final double exhaustY = bottom - 4 + bounce;
 
-    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1X =
+        exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
     final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
     final double p1R = 4.0 + (animationValue * 3.0);
     canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
@@ -1108,4 +1375,3 @@ class UploadBusPainter extends CustomPainter {
     return oldDelegate.animationValue != animationValue;
   }
 }
-

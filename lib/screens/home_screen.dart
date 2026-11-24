@@ -5,12 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui' as ui;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:dio/dio.dart';
 import 'dart:math' as math;
 import '../theme.dart';
 import 'services/wallet_service.dart';
 import 'services/notification_service.dart';
 import 'services/route_service.dart';
+import 'services/friendly_error_message.dart';
+import '../widgets/commutas_error_state.dart';
 import 'dart:developer' as developer;
 import 'reset_password_screen.dart';
 import 'schedule_screen.dart';
@@ -39,16 +40,20 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final WalletService _walletService = WalletService();
-  double _walletBalance = 0.0;
+  double? _walletBalance;
   bool _isLoadingBalance = true;
+  String? _walletBalanceError;
+  bool _walletBalanceIsStale = false;
   String? _accessToken;
   late final AnimationController _busAnimationController;
 
   String? _preferredRouteId;
   Map<String, dynamic>? _preferredRoute;
   bool _isLoadingRoute = true;
+  String? _preferredRouteError;
   String? _lastCheckedRouteId;
 
   @override
@@ -86,7 +91,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Future<void> _checkPendingTransactions() async {
     if (_accessToken == null) return;
-    final changed = await _walletService.checkPendingTransactions(_accessToken!, context);
+    final changed = await _walletService.checkPendingTransactions(
+      _accessToken!,
+      context,
+    );
     if (changed && mounted) {
       _fetchBalance();
     }
@@ -125,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         setState(() {
           _preferredRoute = null;
           _isLoadingRoute = false;
+          _preferredRouteError = null;
         });
       }
       return;
@@ -146,12 +155,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         setState(() {
           _preferredRoute = match.isNotEmpty ? match : null;
           _isLoadingRoute = false;
+          _preferredRouteError = null;
         });
       }
     } catch (e) {
-      developer.log('Error fetching preferred route details: $e', name: 'HomeScreen');
+      developer.log(
+        'Error fetching preferred route details: $e',
+        name: 'HomeScreen',
+      );
       if (mounted) {
-        setState(() => _isLoadingRoute = false);
+        setState(() {
+          _isLoadingRoute = false;
+          _preferredRouteError = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to refresh your preferred route. Please try again.',
+          );
+        });
       }
     }
   }
@@ -167,12 +187,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Future<void> _fetchBalance() async {
     if (_accessToken == null) return;
-    final balance = await _walletService.fetchWalletBalance(token: _accessToken!);
     if (mounted) {
       setState(() {
-        _walletBalance = balance;
-        _isLoadingBalance = false;
+        _isLoadingBalance = true;
+        _walletBalanceError = null;
       });
+    }
+    try {
+      final balance = await _walletService.fetchWalletBalance(
+        token: _accessToken!,
+      );
+      if (mounted) {
+        setState(() {
+          _walletBalance = balance;
+          _walletBalanceError = null;
+          _walletBalanceIsStale = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _walletBalanceError = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to refresh your wallet balance. Please try again.',
+          );
+          _walletBalanceIsStale = _walletBalance != null;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingBalance = false);
     }
   }
 
@@ -203,6 +247,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         child: Column(
           children: [
             _buildCombinedHeaderWalletCard(),
+            if (_walletBalanceError != null ||
+                _preferredRouteError != null) ...[
+              const SizedBox(height: 12),
+              CommutasErrorBanner(
+                message:
+                    'Unable to refresh your information. Please check your connection.',
+                onRetry: () async {
+                  await _fetchBalance();
+                  await _fetchPreferredRouteDetails();
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             _buildNfcPaymentCard(),
             _buildRoadDivider(),
@@ -227,12 +283,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           Image.asset(
             'assets/logo_theme_cropped.png',
             height: 24,
-            errorBuilder: (_, __, ___) => const Icon(Icons.bus_alert, color: CommutasColors.emeraldGreen, size: 20),
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.bus_alert,
+              color: CommutasColors.emeraldGreen,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 8),
           Text(
             'COMMUTAS',
-            style: CommutasTextStyles.labelBold.copyWith(fontSize: 14, letterSpacing: 1),
+            style: CommutasTextStyles.labelBold.copyWith(
+              fontSize: 14,
+              letterSpacing: 1,
+            ),
           ),
         ],
       ),
@@ -324,42 +387,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           ),
           const SizedBox(height: 24),
           Text(
-            'Wallet Balance',
+            _walletBalanceIsStale
+                ? 'Last Known Wallet Balance'
+                : 'Wallet Balance',
             style: CommutasTextStyles.bodySmall.copyWith(
               color: Colors.white60,
               fontSize: 12,
             ),
           ),
           const SizedBox(height: 8),
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: 'Rs. ',
-                  style: CommutasTextStyles.heading1.copyWith(
-                    color: CommutasColors.emeraldGreen,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+          if (_isLoadingBalance)
+            Text(
+              'Loading...',
+              style: CommutasTextStyles.heading1.copyWith(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          else if (_walletBalance == null)
+            Text(
+              'Unavailable',
+              style: CommutasTextStyles.heading1.copyWith(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          else
+            RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Rs. ',
+                    style: CommutasTextStyles.heading1.copyWith(
+                      color: CommutasColors.emeraldGreen,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                TextSpan(
-                  text: _isLoadingBalance ? 'Loading...' : _walletBalance.toStringAsFixed(2),
-                  style: CommutasTextStyles.heading1.copyWith(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+                  TextSpan(
+                    text: _walletBalance!.toStringAsFixed(2),
+                    style: CommutasTextStyles.heading1.copyWith(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: _showAddFundsSheet,
-                  icon: const Icon(Icons.add, size: 18, color: CommutasColors.emeraldGreen),
+                  icon: const Icon(
+                    Icons.add,
+                    size: 18,
+                    color: CommutasColors.emeraldGreen,
+                  ),
                   label: Text(
                     'Add Funds',
                     style: CommutasTextStyles.labelBold.copyWith(
@@ -371,7 +459,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     backgroundColor: Colors.white,
                     foregroundColor: CommutasColors.emeraldGreen,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero,
+                    ),
                     elevation: 0,
                   ),
                 ),
@@ -386,7 +476,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white, width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero,
+                    ),
                   ),
                   child: Text(
                     'View Wallet',
@@ -422,12 +514,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 animation: _busAnimationController,
                 builder: (context, _) {
                   return CustomPaint(
-                    painter: _ThreeDBackgroundPainter(animationValue: _busAnimationController.value),
+                    painter: _ThreeDBackgroundPainter(
+                      animationValue: _busAnimationController.value,
+                    ),
                   );
                 },
               ),
             ),
-            
+
             // 2. Hand-drawn bus translating across the entire card width
             Positioned.fill(
               child: AnimatedBuilder(
@@ -437,11 +531,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     builder: (context, constraints) {
                       final double busWidth = 100;
                       final double busHeight = 60;
-                      
-                      final double totalDistance = constraints.maxWidth + busWidth;
-                      final double leftPos = constraints.maxWidth - (_busAnimationController.value * totalDistance);
+
+                      final double totalDistance =
+                          constraints.maxWidth + busWidth;
+                      final double leftPos =
+                          constraints.maxWidth -
+                          (_busAnimationController.value * totalDistance);
                       final double topPos = constraints.maxHeight * 0.42;
-                      
+
                       return Stack(
                         children: [
                           Positioned(
@@ -450,7 +547,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                             width: busWidth,
                             height: busHeight,
                             child: CustomPaint(
-                              painter: TopUpBusPainter(animationValue: _busAnimationController.value),
+                              painter: TopUpBusPainter(
+                                animationValue: _busAnimationController.value,
+                              ),
                             ),
                           ),
                         ],
@@ -460,7 +559,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 },
               ),
             ),
-            
+
             // 3. Foreground Text & Content (designed like a premium contactless pass)
             Positioned.fill(
               child: Container(
@@ -543,11 +642,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         'action': () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const ScheduleScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const ScheduleScreen()),
           );
-        }
+        },
       },
       {
         'icon': Icons.support_agent_rounded,
@@ -564,7 +661,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
               builder: (context) => const ResetPasswordScreen(),
             ),
           );
-        }
+        },
       },
     ];
 
@@ -600,7 +697,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         const SizedBox(height: 8),
                         Text(
                           item['label'] as String,
-                          style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, fontWeight: FontWeight.w600),
+                          style: CommutasTextStyles.labelBold.copyWith(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -630,7 +730,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       developer.log('Error launching email support: $e', name: 'HomeScreen');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open email client. Please email mobishahzaib@gmail.com directly.')),
+          const SnackBar(
+            content: Text(
+              'Could not open email client. Please email mobishahzaib@gmail.com directly.',
+            ),
+          ),
         );
       }
     }
@@ -638,8 +742,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   String? _encodeQueryParameters(Map<String, String> params) {
     return params.entries
-        .map((MapEntry<String, String> e) =>
-            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .map(
+          (MapEntry<String, String> e) =>
+              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+        )
         .join('&');
   }
 
@@ -652,10 +758,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       cardContent = const SizedBox(
         height: 124,
         child: Center(
-          child: CircularProgressIndicator(
-            color: CommutasColors.emeraldGreen,
-          ),
+          child: CircularProgressIndicator(color: CommutasColors.emeraldGreen),
         ),
+      );
+    } else if (_preferredRouteError != null && !isConfigured) {
+      cardContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: CommutasColors.backgroundGray,
+                  border: Border.all(color: CommutasColors.lineBorder),
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: const Icon(
+                  Icons.sync_problem_outlined,
+                  color: CommutasColors.warning,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Preferred route unavailable',
+                  style: CommutasTextStyles.labelBold.copyWith(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Unable to refresh your preferred route.',
+            style: CommutasTextStyles.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _fetchPreferredRouteDetails,
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Retry'),
+            style: TextButton.styleFrom(
+              foregroundColor: CommutasColors.primaryNavy,
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ],
       );
     } else if (!isConfigured) {
       cardContent = Column(
@@ -667,7 +817,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 height: 44,
                 decoration: BoxDecoration(
                   color: CommutasColors.backgroundGray,
-                  border: Border.all(color: CommutasColors.lineBorder, width: 1),
+                  border: Border.all(
+                    color: CommutasColors.lineBorder,
+                    width: 1,
+                  ),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(
@@ -683,7 +836,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                   children: [
                     Text(
                       'No Preferred Route',
-                      style: CommutasTextStyles.labelBold.copyWith(fontSize: 16),
+                      style: CommutasTextStyles.labelBold.copyWith(
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -724,6 +879,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
       cardContent = Column(
         children: [
+          if (_preferredRouteError != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Showing last known preferred route',
+                style: CommutasTextStyles.bodySmall.copyWith(
+                  color: CommutasColors.warning,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          if (_preferredRouteError != null) const SizedBox(height: 10),
           Row(
             children: [
               Container(
@@ -731,7 +898,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 height: 44,
                 decoration: BoxDecoration(
                   color: CommutasColors.backgroundGray,
-                  border: Border.all(color: CommutasColors.lineBorder, width: 1),
+                  border: Border.all(
+                    color: CommutasColors.lineBorder,
+                    width: 1,
+                  ),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(
@@ -786,10 +956,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
           const SizedBox(height: 16),
           const Divider(height: 1, color: CommutasColors.lineBorder),
           const SizedBox(height: 16),
-          Row(
-            children: [
-            ],
-          ),
+          Row(children: []),
         ],
       );
     }
@@ -807,9 +974,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                 style: CommutasTextStyles.heading2.copyWith(fontSize: 16),
               ),
               Text(
-                isConfigured ? 'Configured' : 'Not Set',
+                _preferredRouteError != null && !isConfigured
+                    ? 'Unavailable'
+                    : isConfigured
+                    ? 'Configured'
+                    : 'Not Set',
                 style: CommutasTextStyles.labelBold.copyWith(
-                  color: isConfigured ? CommutasColors.emeraldGreen : CommutasColors.danger,
+                  color: _preferredRouteError != null && !isConfigured
+                      ? CommutasColors.warning
+                      : isConfigured
+                      ? CommutasColors.emeraldGreen
+                      : CommutasColors.danger,
                   fontSize: 12,
                 ),
               ),
@@ -825,17 +1000,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
   }
 
-
-
   Widget _buildRoadDivider() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: SizedBox(
         height: 12,
         width: double.infinity,
-        child: const CustomPaint(
-          painter: _RoadDividerPainter(),
-        ),
+        child: const CustomPaint(painter: _RoadDividerPainter()),
       ),
     );
   }
@@ -859,7 +1030,8 @@ class _AddFundsSheet extends StatefulWidget {
   State<_AddFundsSheet> createState() => _AddFundsSheetState();
 }
 
-class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderStateMixin {
+class _AddFundsSheetState extends State<_AddFundsSheet>
+    with TickerProviderStateMixin {
   final TextEditingController _amountController = TextEditingController();
   bool _isProcessing = false;
   String? _error;
@@ -893,6 +1065,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
   }
 
   Future<void> _initiatePayment() async {
+    if (_isProcessing) return;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) {
       setState(() => _error = 'Enter an amount');
@@ -951,7 +1124,8 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
         } else {
           setState(() {
             _isProcessing = false;
-            _error = 'Could not open payment browser. Direct checkout URL: ${response['checkout_url']}';
+            _error =
+                'Could not open payment browser. Direct checkout URL: ${response['checkout_url']}';
           });
           _busController.stop();
         }
@@ -962,17 +1136,16 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
         });
         _busController.stop();
       }
-    } on DioException catch (e) {
-      final detail = e.response?.data?['detail'];
-      setState(() {
-        _isProcessing = false;
-        _error = detail?.toString() ?? 'Payment initiation failed. Check your connection.';
-      });
-      _busController.stop();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isProcessing = false;
-        _error = 'An unexpected error occurred.';
+        _error = friendlyErrorMessage(
+          e,
+          fallback: 'Unable to initiate payment. Please try again.',
+          connectionMessage:
+              'Unable to initiate payment. Please check your connection and try again.',
+        );
       });
       _busController.stop();
     }
@@ -983,7 +1156,9 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+        border: Border(
+          top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+        ),
       ),
       padding: EdgeInsets.only(
         left: 24,
@@ -1007,11 +1182,18 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             children: [
               Text(
                 'ADD FUNDS',
-                style: CommutasTextStyles.labelBold.copyWith(fontSize: 13, letterSpacing: 1.5),
+                style: CommutasTextStyles.labelBold.copyWith(
+                  fontSize: 13,
+                  letterSpacing: 1.5,
+                ),
               ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close, color: CommutasColors.slateMuted, size: 20),
+                child: const Icon(
+                  Icons.close,
+                  color: CommutasColors.slateMuted,
+                  size: 20,
+                ),
               ),
             ],
           ),
@@ -1026,24 +1208,31 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-            ],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             style: CommutasTextStyles.heading1.copyWith(fontSize: 28),
             decoration: InputDecoration(
               prefixText: 'Rs. ',
-              prefixStyle: CommutasTextStyles.heading1.copyWith(fontSize: 28, color: CommutasColors.slateMuted),
+              prefixStyle: CommutasTextStyles.heading1.copyWith(
+                fontSize: 28,
+                color: CommutasColors.slateMuted,
+              ),
               hintText: '0',
-              hintStyle: CommutasTextStyles.heading1.copyWith(fontSize: 28, color: CommutasColors.lineBorder),
+              hintStyle: CommutasTextStyles.heading1.copyWith(
+                fontSize: 28,
+                color: CommutasColors.lineBorder,
+              ),
               border: CommutasShapes.inputBorder,
               enabledBorder: CommutasShapes.inputBorder,
               focusedBorder: CommutasShapes.inputFocusBorder,
               errorBorder: CommutasShapes.inputErrorBorder,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
             ),
             onChanged: (val) {
               final parsed = int.tryParse(val);
-              
+
               if (parsed != null && parsed > 10000) {
                 _amountController.text = '10000';
                 _amountController.selection = TextSelection.fromPosition(
@@ -1055,7 +1244,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
                 });
                 return;
               }
-              
+
               setState(() {
                 _error = null;
                 if (parsed != null && _quickAmounts.contains(parsed)) {
@@ -1073,19 +1262,34 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             children: _quickAmounts.map((amount) {
               return Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(right: amount != _quickAmounts.last ? 8.0 : 0),
+                  padding: EdgeInsets.only(
+                    right: amount != _quickAmounts.last ? 8.0 : 0,
+                  ),
                   child: OutlinedButton(
                     onPressed: () => _selectQuickAmount(amount),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _selectedAmount == amount ? Colors.white : CommutasColors.primaryNavy,
-                      backgroundColor: _selectedAmount == amount ? CommutasColors.emeraldGreen : Colors.transparent,
+                      foregroundColor: _selectedAmount == amount
+                          ? Colors.white
+                          : CommutasColors.primaryNavy,
+                      backgroundColor: _selectedAmount == amount
+                          ? CommutasColors.emeraldGreen
+                          : Colors.transparent,
                       side: BorderSide(
-                        color: _selectedAmount == amount ? CommutasColors.emeraldGreen : CommutasColors.lineBorder,
+                        color: _selectedAmount == amount
+                            ? CommutasColors.emeraldGreen
+                            : CommutasColors.lineBorder,
                       ),
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: Text('Rs. $amount', style: CommutasTextStyles.labelBold.copyWith(fontSize: 11)),
+                    child: Text(
+                      'Rs. $amount',
+                      style: CommutasTextStyles.labelBold.copyWith(
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -1099,17 +1303,25 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: CommutasColors.danger.withOpacity(0.08),
-                border: Border.all(color: CommutasColors.danger.withOpacity(0.3)),
+                border: Border.all(
+                  color: CommutasColors.danger.withOpacity(0.3),
+                ),
                 borderRadius: BorderRadius.zero,
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: CommutasColors.danger, size: 16),
+                  const Icon(
+                    Icons.error_outline,
+                    color: CommutasColors.danger,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.danger),
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.danger,
+                      ),
                     ),
                   ),
                 ],
@@ -1123,10 +1335,17 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             height: 48,
             child: TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: (_selectedAmount != null || (_amountController.text.isNotEmpty && double.tryParse(_amountController.text) != null && double.parse(_amountController.text) >= 10 && double.parse(_amountController.text) <= 10000))
+                backgroundColor:
+                    (_selectedAmount != null ||
+                        (_amountController.text.isNotEmpty &&
+                            double.tryParse(_amountController.text) != null &&
+                            double.parse(_amountController.text) >= 10 &&
+                            double.parse(_amountController.text) <= 10000))
                     ? CommutasColors.emeraldGreen
                     : CommutasColors.primaryNavy,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 padding: EdgeInsets.zero,
               ),
               onPressed: _initiatePayment,
@@ -1141,7 +1360,11 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_outline, size: 12, color: CommutasColors.slateMuted),
+                const Icon(
+                  Icons.lock_outline,
+                  size: 12,
+                  color: CommutasColors.slateMuted,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'Secured by Safepay',
@@ -1190,7 +1413,9 @@ class _AddFundsSheetState extends State<_AddFundsSheet> with TickerProviderState
           color: CommutasColors.cobaltTint,
           child: const LinearProgressIndicator(
             backgroundColor: Color(0xFFEEF0FC),
-            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.accentCobalt),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              CommutasColors.accentCobalt,
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -1226,7 +1451,7 @@ class TopUpBusPainter extends CustomPainter {
     // ──────────────────────────────────────────────────────────
     // Filled Details (so outlines are layered on top)
     // ──────────────────────────────────────────────────────────
-    
+
     // 1. Solid white fill for the entire body so the bus is opaque and pops over the 3D grid
     final bodyBasePaint = Paint()
       ..color = Colors.white
@@ -1243,14 +1468,20 @@ class TopUpBusPainter extends CustomPainter {
     final stripePaint = Paint()
       ..color = CommutasColors.emeraldGreen
       ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8),
+      stripePaint,
+    );
 
     // 4. Mint tint window fills
     final windowFillPaint = Paint()
       ..color = const Color(0xFFE8F5E9)
       ..style = PaintingStyle.fill;
     // Front windshield fill
-    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18),
+      windowFillPaint,
+    );
     // Passenger windows fill
     for (int i = 0; i < 3; i++) {
       final double wx = left + 32.0 + i * 20.0;
@@ -1286,10 +1517,26 @@ class TopUpBusPainter extends CustomPainter {
     canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
 
     // Front windshield
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
-    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 24, top + 6),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 24, top + 6),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 18),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 8, top + 18),
+      paint,
+    );
 
     // Windows
     for (int i = 0; i < 3; i++) {
@@ -1298,16 +1545,36 @@ class TopUpBusPainter extends CustomPainter {
     }
 
     // Headlights
-    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    canvas.drawLine(
+      Offset(left, bottom - 10),
+      Offset(left - 4, bottom - 10),
+      paint,
+    );
     final rayPaint = Paint()
       ..color = Colors.orangeAccent
       ..strokeWidth = 1.5;
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 14),
+      rayPaint,
+    );
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 6),
+      rayPaint,
+    );
 
     // Bumper
-    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
-    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 2),
+      Offset(left + 4, bottom - 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(right - 4, bottom - 2),
+      Offset(right + 4, bottom - 2),
+      paint,
+    );
 
     // Wheels
     final double wheelRadius = 8.0;
@@ -1321,33 +1588,49 @@ class TopUpBusPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
-    
+
     final angle = animationValue * 2 * math.pi;
     final spokePaint = Paint()
       ..color = Colors.white
       ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
     // Wheel 2 (Rear)
-    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(
+      Offset(rightWheelX, wheelY),
+      wheelRadius - 1.0,
+      wheelFill,
+    );
     canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
@@ -1366,7 +1649,8 @@ class TopUpBusPainter extends CustomPainter {
     final double exhaustY = bottom - 4 + bounce;
 
     // Puff 1
-    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1X =
+        exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
     final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
     final double p1R = 4.0 + (animationValue * 3.0);
     canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
@@ -1450,12 +1734,13 @@ class _ThreeDBackgroundPainter extends CustomPainter {
     for (int i = 0; i < gridLines; i++) {
       final double progress = (i + animationValue) / gridLines;
       final double ratio = progress % 1.0;
-      final double y = horizonY + (size.height - horizonY) * math.pow(ratio, 1.8);
-      
+      final double y =
+          horizonY + (size.height - horizonY) * math.pow(ratio, 1.8);
+
       final double widthRatio = ratio;
       final double leftX = centerX - (centerX * widthRatio);
       final double rightX = centerX + ((size.width - centerX) * widthRatio);
-      
+
       canvas.drawLine(Offset(leftX, y), Offset(rightX, y), paint);
     }
   }
@@ -1469,7 +1754,6 @@ class _ThreeDBackgroundPainter extends CustomPainter {
 // ──────────────────────────────────────────────────────────
 // Tiny hand-drawn bus icon for the Upcoming Bus card
 // ──────────────────────────────────────────────────────────
-
 
 // ──────────────────────────────────────────────────────────
 // Hand-drawn sketchy dashed road center-line divider

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'services/auth_service.dart';
 import 'services/routing_service.dart';
 import '../theme.dart';
+import '../widgets/commutas_error_state.dart';
 
 class ActiveBusMapScreen extends StatefulWidget {
   final String routeId;
@@ -40,17 +41,18 @@ class ActiveBusMapScreen extends StatefulWidget {
   State<ActiveBusMapScreen> createState() => _ActiveBusMapScreenState();
 }
 
-class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProviderStateMixin {
+class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
+    with TickerProviderStateMixin {
   final MapController _flutterMapController = MapController();
-  
+
   // Coordinates state
   LatLng? _busPosition;
   bool _hasCoordinates = false;
-  
+
   // Dynamic capacity state
   late int _passengersBoarded;
   late int _maxCapacity;
-  
+
   // Connection state — now using web_socket_channel (cross-platform)
   WebSocketChannel? _channel;
   StreamSubscription? _channelSubscription;
@@ -63,6 +65,14 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   DateTime? _lastUpdateTime;
   Timer? _lastUpdateDisplayTimer;
   String _lastUpdateAgo = '';
+  bool _mapError = false;
+  final StreamController<void> _mapResetController =
+      StreamController<void>.broadcast();
+
+  bool get _hasStaleTracking =>
+      _connectionStatus == 'CONNECTED' &&
+      _lastUpdateTime != null &&
+      DateTime.now().difference(_lastUpdateTime!) > const Duration(seconds: 20);
 
   // Student position tracking
   LatLng? _studentPosition;
@@ -81,7 +91,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     super.initState();
     _passengersBoarded = widget.passengersBoarded;
     _maxCapacity = widget.maxCapacity;
-    
+
     // Set initial position if provided by the active buses API call
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
       _busPosition = LatLng(widget.initialLatitude!, widget.initialLongitude!);
@@ -121,7 +131,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
       if (permission == LocationPermission.deniedForever) return;
 
       Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       if (mounted) {
         setState(() {
@@ -130,19 +142,20 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
         });
       }
 
-      _positionSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
-        ),
-      ).listen((Position pos) {
-        if (mounted) {
-          setState(() {
-            _studentPosition = LatLng(pos.latitude, pos.longitude);
-            _hasStudentLocation = true;
+      _positionSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10,
+            ),
+          ).listen((Position pos) {
+            if (mounted) {
+              setState(() {
+                _studentPosition = LatLng(pos.latitude, pos.longitude);
+                _hasStudentLocation = true;
+              });
+            }
           });
-        }
-      });
     } catch (e) {
       debugPrint('[ActiveBusMap] Student location error: $e');
     }
@@ -184,10 +197,14 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
           _polylinePoints = result.polylinePoints;
           _fitMapToRoute();
         } else {
-          _routeDistanceKm = RoutingService.straightLineDistanceKm(_studentPosition!, _busPosition!);
+          _routeDistanceKm = RoutingService.straightLineDistanceKm(
+            _studentPosition!,
+            _busPosition!,
+          );
           _routeDurationMin = null;
           _polylinePoints = [_studentPosition!, _busPosition!];
-          _etaError = 'Failed to fetch road route. Showing straight-line distance.';
+          _etaError =
+              'Failed to fetch road route. Showing straight-line distance.';
         }
       });
     }
@@ -196,11 +213,19 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   void _fitMapToRoute() {
     if (_busPosition == null || _studentPosition == null) return;
     try {
-      final bounds = LatLngBounds.fromPoints([_studentPosition!, _busPosition!]);
+      final bounds = LatLngBounds.fromPoints([
+        _studentPosition!,
+        _busPosition!,
+      ]);
       _flutterMapController.fitCamera(
         CameraFit.bounds(
           bounds: bounds,
-          padding: const EdgeInsets.only(top: 80, bottom: 250, left: 50, right: 50),
+          padding: const EdgeInsets.only(
+            top: 80,
+            bottom: 250,
+            left: 50,
+            right: 50,
+          ),
         ),
       );
     } catch (e) {
@@ -220,6 +245,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     _reconnectTimer?.cancel();
     _lastUpdateDisplayTimer?.cancel();
     _positionSubscription?.cancel();
+    _mapResetController.close();
     _closeWebSocket();
     _flutterMapController.dispose();
     super.dispose();
@@ -261,7 +287,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
       // Wait for the connection to be ready (throws on failure)
       await _channel!.ready;
       debugPrint('[ActiveBusMap] WebSocket connected.');
-      
+
       if (!mounted) return;
 
       setState(() {
@@ -306,7 +332,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
               if (maxCap != null) {
                 _maxCapacity = maxCap;
               }
-              
+
               if (lat != null && lng != null) {
                 _busPosition = LatLng(lat, lng);
                 _hasCoordinates = true;
@@ -332,7 +358,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
           _handleDisconnect();
         },
         onDone: () {
-          debugPrint('[ActiveBusMap] Stream closed (closeCode: ${_channel?.closeCode}, closeReason: ${_channel?.closeReason})');
+          debugPrint(
+            '[ActiveBusMap] Stream closed (closeCode: ${_channel?.closeCode}, closeReason: ${_channel?.closeReason})',
+          );
           _handleDisconnect();
         },
       );
@@ -352,6 +380,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   }
 
   void _handleDisconnect() {
+    if (_connectionStatus == 'DISCONNECTED' && _reconnectTimer != null) {
+      return;
+    }
     _closeWebSocket();
     if (!mounted) return;
     setState(() {
@@ -360,9 +391,13 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     });
 
     _reconnectAttempts++;
-    final backoffSeconds = _reconnectAttempts > 5 ? 15 : (_reconnectAttempts > 2 ? 8 : 3);
-    
-    debugPrint('[ActiveBusMap] Auto-reconnect in ${backoffSeconds}s (attempt $_reconnectAttempts)');
+    final backoffSeconds = _reconnectAttempts > 5
+        ? 15
+        : (_reconnectAttempts > 2 ? 8 : 3);
+
+    debugPrint(
+      '[ActiveBusMap] Auto-reconnect in ${backoffSeconds}s (attempt $_reconnectAttempts)',
+    );
 
     _reconnectTimer = Timer(Duration(seconds: backoffSeconds), () {
       if (mounted && _connectionStatus == 'DISCONNECTED') {
@@ -374,6 +409,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   Color _getStatusColor() {
     switch (_connectionStatus) {
       case 'CONNECTED':
+        if (_hasStaleTracking) return CommutasColors.warning;
         return CommutasColors.emeraldGreen;
       case 'CONNECTING':
         return CommutasColors.warning;
@@ -386,15 +422,22 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
   String _getStatusText() {
     switch (_connectionStatus) {
       case 'CONNECTED':
+        if (_hasStaleTracking) {
+          return 'TRACKING STALE • LAST UPDATE $_lastUpdateAgo';
+        }
         if (_lastUpdateAgo.isNotEmpty) {
           return 'LIVE • Updated $_lastUpdateAgo';
         }
         return 'LIVE TRACKING ACTIVE';
       case 'CONNECTING':
-        return _isManualReconnecting ? 'RECONNECTING...' : 'CONNECTING TO BUS...';
+        return _isManualReconnecting
+            ? 'RECONNECTING...'
+            : 'CONNECTING TO BUS...';
       case 'DISCONNECTED':
       default:
-        final backoff = _reconnectAttempts > 5 ? 15 : (_reconnectAttempts > 2 ? 8 : 3);
+        final backoff = _reconnectAttempts > 5
+            ? 15
+            : (_reconnectAttempts > 2 ? 8 : 3);
         return 'CONNECTION LOST • RETRYING IN ${backoff}s';
     }
   }
@@ -407,7 +450,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
         children: [
           if (_connectionStatus == 'CONNECTING')
             SizedBox(
-              width: 12, height: 12,
+              width: 12,
+              height: 12,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 valueColor: AlwaysStoppedAnimation<Color>(_getStatusColor()),
@@ -415,7 +459,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             )
           else
             Container(
-              width: 8, height: 8,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 color: _getStatusColor(),
                 shape: BoxShape.circle,
@@ -439,7 +484,10 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
               onTap: () => _connectWebSocket(isManual: true),
               behavior: HitTestBehavior.opaque,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: CommutasColors.primaryNavy,
                   border: Border.all(color: CommutasColors.primaryNavy),
@@ -469,7 +517,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
           Row(
             children: [
               SizedBox(
-                width: 14, height: 14,
+                width: 14,
+                height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor: AlwaysStoppedAnimation<Color>(
@@ -485,9 +534,11 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                   _connectionStatus == 'CONNECTED'
                       ? 'Connected. Waiting for first GPS update from driver...'
                       : _connectionStatus == 'CONNECTING'
-                          ? 'Establishing connection to bus...'
-                          : 'Unable to connect. Retrying automatically...',
-                  style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                      ? 'Establishing connection to bus...'
+                      : 'Unable to connect. Retrying automatically...',
+                  style: CommutasTextStyles.bodySmall.copyWith(
+                    color: CommutasColors.slateMuted,
+                  ),
                 ),
               ),
             ],
@@ -506,7 +557,11 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     } else {
       return Row(
         children: [
-          const Icon(Icons.location_on, size: 16, color: CommutasColors.emeraldGreen),
+          const Icon(
+            Icons.location_on,
+            size: 16,
+            color: CommutasColors.emeraldGreen,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -526,7 +581,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: AppBar(
-        title: Text(widget.routeId.toUpperCase()),
+        title: Text(
+          widget.routeName.isNotEmpty ? widget.routeName : widget.routeId,
+        ),
         centerTitle: true,
       ),
       body: Stack(
@@ -540,10 +597,17 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'pk.edu.comsats.commutas',
                 retinaMode: RetinaMode.isHighDensity(context),
+                reset: _mapResetController.stream,
+                errorTileCallback: (_, __, ___) {
+                  if (mounted && !_mapError) {
+                    setState(() => _mapError = true);
+                  }
+                },
               ),
               PolylineLayer(
                 polylines: [
@@ -567,7 +631,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                         children: [
                           if (_connectionStatus == 'CONNECTED')
                             _PulseAnimation(
-                              color: CommutasColors.primaryNavy.withOpacity(0.3),
+                              color: CommutasColors.primaryNavy.withOpacity(
+                                0.3,
+                              ),
                             ),
                           Container(
                             decoration: BoxDecoration(
@@ -576,11 +642,19 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                                   : CommutasColors.slateMuted,
                               shape: BoxShape.circle,
                               boxShadow: const [
-                                BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 3),
+                                ),
                               ],
                             ),
                             padding: const EdgeInsets.all(8),
-                            child: const Icon(Icons.directions_bus_filled, color: Colors.white, size: 24),
+                            child: const Icon(
+                              Icons.directions_bus_filled,
+                              color: Colors.white,
+                              size: 24,
+                            ),
                           ),
                         ],
                       ),
@@ -597,7 +671,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: CommutasColors.primaryNavy.withOpacity(0.2),
+                              color: CommutasColors.primaryNavy.withOpacity(
+                                0.2,
+                              ),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -607,7 +683,10 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                             decoration: BoxDecoration(
                               color: CommutasColors.primaryNavy,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2.5),
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2.5,
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black26,
@@ -627,13 +706,32 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
 
           // 2. Status overlay
           Positioned(top: 16, left: 16, right: 16, child: _buildStatusBar()),
+          if (_mapError)
+            Positioned(
+              top: 72,
+              left: 16,
+              right: 16,
+              child: CommutasErrorBanner(
+                message: 'Map imagery is temporarily unavailable.',
+                onRetry: () {
+                  if (mounted) {
+                    setState(() => _mapError = false);
+                    _mapResetController.add(null);
+                  }
+                },
+              ),
+            ),
 
           // 3. Detail card
           Positioned(
-            bottom: 24, left: 16, right: 16,
+            bottom: 24,
+            left: 16,
+            right: 16,
             child: Container(
               padding: const EdgeInsets.all(20),
-              decoration: CommutasShapes.cardDecoration.copyWith(color: Colors.white),
+              decoration: CommutasShapes.cardDecoration.copyWith(
+                color: Colors.white,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -648,8 +746,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                             Text(
                               widget.vehicleNo,
                               style: CommutasTextStyles.heading2.copyWith(
-                                  fontSize: 16,
-                                  color: CommutasColors.primaryNavy,
+                                fontSize: 16,
+                                color: CommutasColors.primaryNavy,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -675,7 +773,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: CommutasColors.lightGreenBg,
-                        border: Border.all(color: CommutasColors.emeraldGreen.withOpacity(0.3)),
+                        border: Border.all(
+                          color: CommutasColors.emeraldGreen.withOpacity(0.3),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -705,7 +805,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                                   height: 14,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      CommutasColors.emeraldGreen,
+                                    ),
                                   ),
                                 )
                               else
@@ -746,26 +848,49 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
                                 ),
                               )
-                            : const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                            : const Icon(
+                                Icons.navigation_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                         label: Text(
-                          _isCalculatingEta ? 'CALCULATING ETA...' : 'GET ROAD ETA & PATH',
-                          style: CommutasTextStyles.buttonLabel.copyWith(letterSpacing: 0.5),
+                          _isCalculatingEta
+                              ? 'CALCULATING ETA...'
+                              : 'GET ROAD ETA & PATH',
+                          style: CommutasTextStyles.buttonLabel.copyWith(
+                            letterSpacing: 0.5,
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: CommutasColors.primaryNavy,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
                         ),
                       ),
                     ),
                   ],
                   const SizedBox(height: 16),
                   _buildCoordinateInfo(),
+                  if (_connectionStatus != 'CONNECTED' ||
+                      _hasStaleTracking) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Showing last known bus location.',
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -791,7 +916,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             backgroundColor: Colors.white,
             foregroundColor: CommutasColors.primaryNavy,
             elevation: 2,
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
             mini: true,
             child: const Icon(Icons.my_location),
           ),
@@ -806,7 +933,9 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen> with TickerProv
             backgroundColor: Colors.white,
             foregroundColor: CommutasColors.primaryNavy,
             elevation: 2,
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
             mini: true,
             child: const Icon(Icons.directions_bus_filled),
           ),
@@ -825,17 +954,22 @@ class _PulseAnimation extends StatefulWidget {
   State<_PulseAnimation> createState() => _PulseAnimationState();
 }
 
-class _PulseAnimationState extends State<_PulseAnimation> with SingleTickerProviderStateMixin {
+class _PulseAnimationState extends State<_PulseAnimation>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-    _animation = Tween<double>(begin: 0.8, end: 2.2).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+    _animation = Tween<double>(
+      begin: 0.8,
+      end: 2.2,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -854,8 +988,12 @@ class _PulseAnimationState extends State<_PulseAnimation> with SingleTickerProvi
           child: Opacity(
             opacity: (2.2 - _animation.value) / 1.4,
             child: Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: widget.color,
+                shape: BoxShape.circle,
+              ),
             ),
           ),
         );

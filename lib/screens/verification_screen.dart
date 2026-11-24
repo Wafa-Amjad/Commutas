@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:dio/dio.dart';
 import 'dart:math' as math;
 import '../theme.dart';
 import '../screens/services/auth_service.dart';
+import '../screens/services/friendly_error_message.dart';
 
 class VerificationScreen extends StatefulWidget {
   final String regNo;
@@ -24,13 +24,14 @@ class VerificationScreen extends StatefulWidget {
   State<VerificationScreen> createState() => _VerificationScreenState();
 }
 
-class _VerificationScreenState extends State<VerificationScreen> with TickerProviderStateMixin {
+class _VerificationScreenState extends State<VerificationScreen>
+    with TickerProviderStateMixin {
   final AuthService _authService = AuthService();
-  
+
   // Progress & Bus control
   late final AnimationController _progressController;
   late final AnimationController _busController;
-  
+
   bool _isSuccess = false;
   String? _apiError;
 
@@ -74,26 +75,23 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
           _isSuccess = true;
         });
       } else {
-        throw Exception(widget.isReset 
-            ? "Password reset failed. Invalid response from server."
-            : "Registration failed. Invalid response from server.");
+        throw Exception(
+          widget.isReset
+              ? "Password reset failed. Invalid response from server."
+              : "Registration failed. Invalid response from server.",
+        );
       }
     } catch (e) {
       if (mounted) {
-        String errorMsg = widget.isReset
-            ? "Password reset failed. Check network or credentials."
-            : "Registration failed. Check network or credentials.";
-        if (e is DioException) {
-          final detail = e.response?.data?['detail'];
-          if (detail != null) {
-            errorMsg = detail.toString();
-          } else if (e.message != null) {
-            errorMsg = e.message!;
-          }
-        } else {
-          errorMsg = e.toString();
-        }
-        
+        final errorMsg = friendlyErrorMessage(
+          e,
+          fallback: widget.isReset
+              ? 'Password reset could not be completed. Please try again.'
+              : 'Registration could not be completed. Please try again.',
+          connectionMessage:
+              'Unable to connect to Commutas. Please check your connection and try again.',
+        );
+
         setState(() {
           _apiError = errorMsg;
         });
@@ -115,7 +113,10 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 32.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 32.0,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -134,7 +135,10 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                 Container(
                   decoration: BoxDecoration(
                     color: CommutasColors.white,
-                    border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                    border: Border.all(
+                      color: CommutasColors.lineBorder,
+                      width: 1.5,
+                    ),
                     borderRadius: BorderRadius.zero,
                   ),
                   padding: const EdgeInsets.all(24.0),
@@ -142,7 +146,9 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        widget.isReset ? 'PASSWORD RESET VERIFICATION' : 'STUDENT ENROLLMENT VERIFICATION',
+                        widget.isReset
+                            ? 'PASSWORD RESET VERIFICATION'
+                            : 'STUDENT ENROLLMENT VERIFICATION',
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -171,9 +177,11 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                               alignment: Alignment.centerLeft,
                               widthFactor: value,
                               child: Container(
-                                color: _apiError != null 
-                                    ? CommutasColors.danger 
-                                    : (_isSuccess ? CommutasColors.success : CommutasColors.accentCobalt),
+                                color: _apiError != null
+                                    ? CommutasColors.danger
+                                    : (_isSuccess
+                                          ? CommutasColors.success
+                                          : CommutasColors.accentCobalt),
                               ),
                             );
                           },
@@ -189,7 +197,9 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                           child: TextButton(
                             style: TextButton.styleFrom(
                               backgroundColor: CommutasColors.primaryNavy,
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero,
+                              ),
                               padding: EdgeInsets.zero,
                             ),
                             onPressed: () {
@@ -212,7 +222,9 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
                           child: TextButton(
                             style: TextButton.styleFrom(
                               backgroundColor: CommutasColors.primaryNavy,
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero,
+                              ),
                               padding: EdgeInsets.zero,
                             ),
                             onPressed: () {
@@ -266,13 +278,21 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
     Color textColor;
 
     if (isCompleted) {
-      iconWidget = const Icon(Icons.check, color: CommutasColors.success, size: 18);
-      text = widget.isReset 
+      iconWidget = const Icon(
+        Icons.check,
+        color: CommutasColors.success,
+        size: 18,
+      );
+      text = widget.isReset
           ? "Transit account secured!"
           : "Transit account setup complete!";
       textColor = CommutasColors.success;
     } else if (isError) {
-      iconWidget = const Icon(Icons.close, color: CommutasColors.danger, size: 18);
+      iconWidget = const Icon(
+        Icons.close,
+        color: CommutasColors.danger,
+        size: 18,
+      );
       text = 'Error: $_apiError';
       textColor = CommutasColors.danger;
     } else {
@@ -281,7 +301,9 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
         width: 16,
         child: CircularProgressIndicator(
           strokeWidth: 2.0,
-          valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.accentCobalt),
+          valueColor: AlwaysStoppedAnimation<Color>(
+            CommutasColors.accentCobalt,
+          ),
         ),
       );
       text = widget.isReset
@@ -291,7 +313,9 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
     }
 
     return TweenAnimationBuilder<double>(
-      key: ValueKey<String>('status_${isCompleted ? 'success' : (isError ? 'error' : 'processing')}'),
+      key: ValueKey<String>(
+        'status_${isCompleted ? 'success' : (isError ? 'error' : 'processing')}',
+      ),
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 300),
       builder: (context, value, child) {
@@ -306,10 +330,7 @@ class _VerificationScreenState extends State<VerificationScreen> with TickerProv
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2.0),
-            child: iconWidget,
-          ),
+          Padding(padding: const EdgeInsets.only(top: 2.0), child: iconWidget),
           const SizedBox(width: 12.0),
           Expanded(
             child: Text(
@@ -331,10 +352,7 @@ class _HanddrawnBusPainter extends CustomPainter {
   final double animationValue;
   final bool isCrashed;
 
-  _HanddrawnBusPainter({
-    required this.animationValue,
-    required this.isCrashed,
-  });
+  _HanddrawnBusPainter({required this.animationValue, required this.isCrashed});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -353,7 +371,9 @@ class _HanddrawnBusPainter extends CustomPainter {
       canvas.translate(-size.width / 2, -size.height / 2);
     }
 
-    final bounce = isCrashed ? 0.0 : math.sin(animationValue * 2 * math.pi) * 2.0;
+    final bounce = isCrashed
+        ? 0.0
+        : math.sin(animationValue * 2 * math.pi) * 2.0;
 
     final double top = 10.0 + bounce;
     final double bottom = size.height - 20.0 + bounce;
@@ -380,19 +400,47 @@ class _HanddrawnBusPainter extends CustomPainter {
     }
 
     // Front windshield
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
-    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 24, top + 6),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 24, top + 6),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 18),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 8, top + 18),
+      paint,
+    );
 
     // Windshield cracks on crash
     if (isCrashed) {
       final crackPaint = Paint()
         ..color = CommutasColors.navyInk.withValues(alpha: 0.7)
         ..strokeWidth = 1.0;
-      canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 15, top + 11), crackPaint);
-      canvas.drawLine(Offset(left + 15, top + 11), Offset(left + 21, top + 15), crackPaint);
-      canvas.drawLine(Offset(left + 15, top + 11), Offset(left + 11, top + 7), crackPaint);
+      canvas.drawLine(
+        Offset(left + 8, top + 18),
+        Offset(left + 15, top + 11),
+        crackPaint,
+      );
+      canvas.drawLine(
+        Offset(left + 15, top + 11),
+        Offset(left + 21, top + 15),
+        crackPaint,
+      );
+      canvas.drawLine(
+        Offset(left + 15, top + 11),
+        Offset(left + 11, top + 7),
+        crackPaint,
+      );
     }
 
     // Windows
@@ -403,21 +451,49 @@ class _HanddrawnBusPainter extends CustomPainter {
 
     // Sketchy headlights (faint light rays or broken cracks)
     if (!isCrashed) {
-      canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+      canvas.drawLine(
+        Offset(left, bottom - 10),
+        Offset(left - 4, bottom - 10),
+        paint,
+      );
       final rayPaint = Paint()
         ..color = Colors.orangeAccent.withValues(alpha: 0.8)
         ..strokeWidth = 1.5;
-      canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
-      canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+      canvas.drawLine(
+        Offset(left - 4, bottom - 10),
+        Offset(left - 20, bottom - 14),
+        rayPaint,
+      );
+      canvas.drawLine(
+        Offset(left - 4, bottom - 10),
+        Offset(left - 20, bottom - 6),
+        rayPaint,
+      );
     } else {
       // Cracked headlight lines
-      canvas.drawLine(Offset(left, bottom - 12), Offset(left - 3, bottom - 8), paint);
-      canvas.drawLine(Offset(left - 3, bottom - 8), Offset(left, bottom - 4), paint);
+      canvas.drawLine(
+        Offset(left, bottom - 12),
+        Offset(left - 3, bottom - 8),
+        paint,
+      );
+      canvas.drawLine(
+        Offset(left - 3, bottom - 8),
+        Offset(left, bottom - 4),
+        paint,
+      );
     }
 
     // Bumper
-    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
-    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 2),
+      Offset(left + 4, bottom - 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(right - 4, bottom - 2),
+      Offset(right + 4, bottom - 2),
+      paint,
+    );
 
     // Wheels (Front wheel is broken/detached and tilted on crash)
     final double wheelRadius = 8.0;
@@ -429,16 +505,26 @@ class _HanddrawnBusPainter extends CustomPainter {
     final double currentLeftWheelY = isCrashed ? wheelY - 3.0 : wheelY;
 
     // Wheel 1 (Front - offset and broken)
-    canvas.drawCircle(Offset(currentLeftWheelX, currentLeftWheelY), wheelRadius, paint);
+    canvas.drawCircle(
+      Offset(currentLeftWheelX, currentLeftWheelY),
+      wheelRadius,
+      paint,
+    );
     final angle = isCrashed ? -0.6 : animationValue * 2 * math.pi;
     canvas.drawLine(
       Offset(currentLeftWheelX, currentLeftWheelY),
-      Offset(currentLeftWheelX + wheelRadius * math.cos(angle), currentLeftWheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        currentLeftWheelX + wheelRadius * math.cos(angle),
+        currentLeftWheelY + wheelRadius * math.sin(angle),
+      ),
       paint,
     );
     canvas.drawLine(
       Offset(currentLeftWheelX, currentLeftWheelY),
-      Offset(currentLeftWheelX + wheelRadius * math.cos(angle + math.pi), currentLeftWheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        currentLeftWheelX + wheelRadius * math.cos(angle + math.pi),
+        currentLeftWheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       paint,
     );
 
@@ -447,12 +533,18 @@ class _HanddrawnBusPainter extends CustomPainter {
     final angleRear = isCrashed ? 0.4 : animationValue * 2 * math.pi;
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angleRear), wheelY + wheelRadius * math.sin(angleRear)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angleRear),
+        wheelY + wheelRadius * math.sin(angleRear),
+      ),
       paint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angleRear + math.pi), wheelY + wheelRadius * math.sin(angleRear + math.pi)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angleRear + math.pi),
+        wheelY + wheelRadius * math.sin(angleRear + math.pi),
+      ),
       paint,
     );
 
@@ -467,12 +559,29 @@ class _HanddrawnBusPainter extends CustomPainter {
       final double sy = bottom - 2;
 
       // Spark length animated to flicker
-      final double sparkLen = 10.0 + math.sin(animationValue * 4 * math.pi) * 4.0;
+      final double sparkLen =
+          10.0 + math.sin(animationValue * 4 * math.pi) * 4.0;
 
-      canvas.drawLine(Offset(sx, sy), Offset(sx - sparkLen, sy - sparkLen * 0.4), sparkPaint);
-      canvas.drawLine(Offset(sx, sy), Offset(sx - sparkLen * 1.3, sy + sparkLen * 0.1), sparkPaint);
-      canvas.drawLine(Offset(sx, sy), Offset(sx - sparkLen * 0.8, sy + sparkLen * 0.7), sparkPaint);
-      canvas.drawLine(Offset(sx, sy), Offset(sx - sparkLen * 0.5, sy - sparkLen * 0.8), sparkPaint);
+      canvas.drawLine(
+        Offset(sx, sy),
+        Offset(sx - sparkLen, sy - sparkLen * 0.4),
+        sparkPaint,
+      );
+      canvas.drawLine(
+        Offset(sx, sy),
+        Offset(sx - sparkLen * 1.3, sy + sparkLen * 0.1),
+        sparkPaint,
+      );
+      canvas.drawLine(
+        Offset(sx, sy),
+        Offset(sx - sparkLen * 0.8, sy + sparkLen * 0.7),
+        sparkPaint,
+      );
+      canvas.drawLine(
+        Offset(sx, sy),
+        Offset(sx - sparkLen * 0.5, sy - sparkLen * 0.8),
+        sparkPaint,
+      );
 
       // 2. Animated translucent rising and expanding smoke puffs (left side hood)
       final smokePaint = Paint()
@@ -488,7 +597,8 @@ class _HanddrawnBusPainter extends CustomPainter {
 
       // Puff 1
       final double p1Y = hy - 14.0 - (animationValue * 16.0);
-      final double p1X = hx - 4.0 + math.sin(animationValue * 2 * math.pi) * 3.0;
+      final double p1X =
+          hx - 4.0 + math.sin(animationValue * 2 * math.pi) * 3.0;
       final double p1Radius = 6.0 + (animationValue * 4.0);
       canvas.drawCircle(Offset(p1X, p1Y), p1Radius, smokePaint);
       canvas.drawCircle(Offset(p1X, p1Y), p1Radius, smokeOutline);
@@ -509,6 +619,7 @@ class _HanddrawnBusPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HanddrawnBusPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue || oldDelegate.isCrashed != isCrashed;
+    return oldDelegate.animationValue != animationValue ||
+        oldDelegate.isCrashed != isCrashed;
   }
 }

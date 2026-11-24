@@ -4,13 +4,17 @@ import 'api_interceptor.dart';
 import 'auth_service.dart';
 
 class RouteService {
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: AuthService.serverAddress,
-    headers: {'Content-Type': 'application/json'},
-  ))..interceptors.add(ApiInterceptor());
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: AuthService.serverAddress,
+      headers: {'Content-Type': 'application/json'},
+    ),
+  )..interceptors.add(ApiInterceptor());
 
   /// Fetch all available static routes. Requires JWT token.
-  Future<List<Map<String, dynamic>>> fetchRoutes({required String token}) async {
+  Future<List<Map<String, dynamic>>> fetchRoutes({
+    required String token,
+  }) async {
     try {
       final response = await _dio.get(
         '/api/routes',
@@ -19,16 +23,18 @@ class RouteService {
 
       if (response.statusCode == 200 && response.data is List) {
         return List<Map<String, dynamic>>.from(
-          (response.data as List).map((item) => Map<String, dynamic>.from(item)),
+          (response.data as List).map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
         );
       }
-      return [];
+      throw const FormatException('Routes response was unavailable.');
     } on DioException catch (e) {
       developer.log(
         'Fetch Routes Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'RouteService',
       );
-      return [];
+      rethrow;
     }
   }
 
@@ -50,12 +56,14 @@ class RouteService {
         'Save Preferred Route Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'RouteService',
       );
-      return false;
+      rethrow;
     }
   }
 
   /// Fetch all schedules configurations. Requires JWT token.
-  Future<List<Map<String, dynamic>>> fetchSchedules({required String token}) async {
+  Future<List<Map<String, dynamic>>> fetchSchedules({
+    required String token,
+  }) async {
     try {
       final response = await _dio.get(
         '/api/schedules',
@@ -64,21 +72,25 @@ class RouteService {
 
       if (response.statusCode == 200 && response.data is List) {
         return List<Map<String, dynamic>>.from(
-          (response.data as List).map((item) => Map<String, dynamic>.from(item)),
+          (response.data as List).map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
         );
       }
-      return [];
+      throw const FormatException('Schedules response was unavailable.');
     } on DioException catch (e) {
       developer.log(
         'Fetch Schedules Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'RouteService',
       );
-      return [];
+      rethrow;
     }
   }
 
   /// Fetch all active buses in transit. Requires JWT token.
-  Future<List<Map<String, dynamic>>> fetchActiveBuses({required String token}) async {
+  Future<List<Map<String, dynamic>>> fetchActiveBuses({
+    required String token,
+  }) async {
     try {
       final response = await _dio.get(
         '/api/buses/active',
@@ -87,16 +99,18 @@ class RouteService {
 
       if (response.statusCode == 200 && response.data is List) {
         return List<Map<String, dynamic>>.from(
-          (response.data as List).map((item) => Map<String, dynamic>.from(item)),
+          (response.data as List).map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
         );
       }
-      return [];
+      throw const FormatException('Active buses response was unavailable.');
     } on DioException catch (e) {
       developer.log(
         'Fetch Active Buses Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'RouteService',
       );
-      return [];
+      rethrow;
     }
   }
 }

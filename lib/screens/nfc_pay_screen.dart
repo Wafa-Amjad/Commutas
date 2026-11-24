@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'services/auth_service.dart';
 import 'services/wallet_service.dart';
+import 'services/friendly_error_message.dart';
 import '../theme.dart';
 
 /// Student payment screen with a 3-step flow:
@@ -33,7 +34,8 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   String? _errorMsg;
 
   // Balance preview
-  double _walletBalance = 0.0;
+  double? _walletBalance;
+  bool _walletBalanceIsStale = false;
   static const double fareAmount = 100.0;
 
   // Token broadcast
@@ -43,6 +45,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   bool _hceActive = false;
   bool _hceSupported = false;
   String _statusMessage = '';
+  String? _statusRefreshError;
 
   @override
   void initState() {
@@ -77,13 +80,19 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       if (mounted) {
         setState(() {
           _walletBalance = balance;
+          _walletBalanceIsStale = false;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMsg = e.toString().replaceAll('Exception:', '').trim();
+          _errorMsg = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to retrieve your wallet balance. Please check your connection and refresh.',
+          );
+          _walletBalanceIsStale = _walletBalance != null;
           _isLoading = false;
         });
       }
@@ -123,15 +132,14 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       }
     } catch (e) {
       if (mounted) {
-        String msg = e.toString().replaceAll('Exception:', '').trim();
-        // Extract server detail message from DioException
-        if (e is dynamic && e.toString().contains('detail')) {
-          try {
-            msg = e.toString();
-          } catch (_) {}
-        }
         setState(() {
-          _errorMsg = msg;
+          _errorMsg = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to generate a boarding ticket. Please check your connection and try again.',
+            connectionMessage:
+                'Unable to generate a boarding ticket. Please check your connection and try again.',
+          );
           _isLoading = false;
           _step = PayStep.balancePreview;
         });
@@ -229,6 +237,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
         tokenId: _tokenId!,
       );
       if (res != null && mounted) {
+        _statusRefreshError = null;
         final status = res['status'] as String?;
         if (status == 'USED') {
           _timer?.cancel();
@@ -245,7 +254,17 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           });
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _statusRefreshError = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to refresh ticket status. Please check your connection.',
+          );
+        });
+      }
+    }
   }
 
   String _formatDuration(int seconds) {
@@ -411,8 +430,12 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
 
   // ─── STEP 1 UI: Balance & Fare Preview ────────────────────────────────
   Widget _buildBalancePreview() {
-    final bool hasSufficientBalance = _walletBalance >= fareAmount;
-    final double remainingBalance = _walletBalance - fareAmount;
+    final bool hasVerifiedBalance = _walletBalance != null;
+    final bool hasSufficientBalance =
+        hasVerifiedBalance && _walletBalance! >= fareAmount;
+    final double? remainingBalance = hasVerifiedBalance
+        ? _walletBalance! - fareAmount
+        : null;
 
     return SingleChildScrollView(
       child: Padding(
@@ -428,7 +451,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'BOARDING TICKET',
+              'Boarding Ticket',
               style: CommutasTextStyles.heading2.copyWith(letterSpacing: 1.5),
               textAlign: TextAlign.center,
             ),
@@ -455,9 +478,15 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
               child: Column(
                 children: [
                   _buildFareRow(
-                    'Wallet Balance',
-                    'Rs. ${_walletBalance.toStringAsFixed(2)}',
-                    color: hasSufficientBalance
+                    _walletBalanceIsStale
+                        ? 'Last Known Wallet Balance'
+                        : 'Wallet Balance',
+                    hasVerifiedBalance
+                        ? 'Rs. ${_walletBalance!.toStringAsFixed(2)}'
+                        : 'Unavailable',
+                    color: !hasVerifiedBalance
+                        ? CommutasColors.slateMuted
+                        : hasSufficientBalance
                         ? CommutasColors.emeraldGreen
                         : CommutasColors.danger,
                   ),
@@ -470,10 +499,14 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                   const Divider(height: 24, color: CommutasColors.lineBorder),
                   _buildFareRow(
                     'Balance After Deduction',
-                    hasSufficientBalance
-                        ? 'Rs. ${remainingBalance.toStringAsFixed(2)}'
+                    !hasVerifiedBalance
+                        ? '—'
+                        : hasSufficientBalance
+                        ? 'Rs. ${remainingBalance!.toStringAsFixed(2)}'
                         : '— Insufficient —',
-                    color: hasSufficientBalance
+                    color: !hasVerifiedBalance
+                        ? CommutasColors.slateMuted
+                        : hasSufficientBalance
                         ? CommutasColors.slateMuted
                         : CommutasColors.danger,
                     isBold: true,
@@ -534,7 +567,24 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                   ),
                 ),
               )
-            else ...[
+            else if (!hasVerifiedBalance) ...[
+              if (_errorMsg == null)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: CommutasColors.backgroundGray,
+                    border: Border.all(color: CommutasColors.lineBorder),
+                  ),
+                  child: Text(
+                    'A verified wallet balance is required before generating a boarding ticket.',
+                    style: CommutasTextStyles.bodySmall.copyWith(
+                      color: CommutasColors.slateMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ] else ...[
               // Insufficient balance warning
               Container(
                 padding: const EdgeInsets.all(14),
@@ -643,12 +693,14 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: Column(
           children: [
+            Text('Boarding Ticket', style: CommutasTextStyles.heading1),
+            const SizedBox(height: 20),
             _buildHceVisual(),
             const SizedBox(height: 32),
             Text(
               _hceActive
                   ? 'Hold Near Driver\'s Phone'
-                  : 'Present QR Code to Driver',
+                  : 'Present this QR code to the driver',
               style: CommutasTextStyles.heading2,
             ),
             const SizedBox(height: 8),
@@ -664,6 +716,8 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             const SizedBox(height: 24),
             _buildBackupQrCard(),
             const SizedBox(height: 24),
+            _buildValidityCard(),
+            const SizedBox(height: 16),
             _buildStatusCard(),
           ],
         ),
@@ -677,10 +731,10 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 2; i++)
           Container(
-            width: 140.0 + (i * 30),
-            height: 140.0 + (i * 30),
+            width: 124.0 + (i * 24),
+            height: 124.0 + (i * 24),
             decoration: BoxDecoration(
               color: active
                   ? CommutasColors.emeraldGreen.withOpacity(0.05 / (i + 1))
@@ -722,22 +776,16 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                active ? 'SENSOR ACTIVE' : 'NFC OFFLINE',
+                active
+                    ? 'NFC READY'
+                    : _hceSupported
+                    ? 'NFC DISABLED'
+                    : 'NFC UNAVAILABLE',
                 style: TextStyle(
                   color: active ? CommutasColors.emeraldGreen : Colors.white60,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                   letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _formatDuration(_secondsRemaining),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'monospace',
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
@@ -769,7 +817,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                'BACKUP TICKET QR CODE',
+                'BOARDING QR CODE',
                 style: CommutasTextStyles.labelBold.copyWith(
                   fontSize: 10,
                   color: CommutasColors.primaryNavy,
@@ -787,12 +835,49 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Expires in: ${_formatDuration(_secondsRemaining)}',
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+            'Present this QR code to the driver.',
+            textAlign: TextAlign.center,
+            style: CommutasTextStyles.bodySmall.copyWith(
               color: CommutasColors.slateMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildValidityCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: CommutasColors.lightGreenBg,
+        border: Border.all(
+          color: CommutasColors.emeraldGreen.withOpacity(0.35),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.timer_outlined,
+            color: CommutasColors.emeraldGreen,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Ticket valid for',
+              style: CommutasTextStyles.bodySmall.copyWith(
+                color: CommutasColors.primaryNavy,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            _formatDuration(_secondsRemaining),
+            style: CommutasTextStyles.labelBold.copyWith(
+              color: CommutasColors.emeraldGreen,
+              fontSize: 15,
             ),
           ),
         ],
@@ -825,7 +910,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _statusMessage,
+              _statusRefreshError ?? _statusMessage,
               style: TextStyle(
                 color: active
                     ? CommutasColors.emeraldGreen

@@ -44,14 +44,19 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   final TextEditingController _rollNoController = TextEditingController();
 
   // Sign In inputs
-  final TextEditingController _signInVehicleController = TextEditingController();
-  final TextEditingController _signInPasswordController = TextEditingController();
+  final TextEditingController _signInVehicleController =
+      TextEditingController();
+  final TextEditingController _signInPasswordController =
+      TextEditingController();
   bool _obscureSignInPassword = true;
 
   // Sign Up inputs
-  final TextEditingController _portalPasswordController = TextEditingController();
-  final TextEditingController _createPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _portalPasswordController =
+      TextEditingController();
+  final TextEditingController _createPasswordController =
+      TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   bool _obscurePortalPassword = true;
   bool _obscureCreatePassword = true;
   bool _obscureConfirmPassword = true;
@@ -67,21 +72,127 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   // Lists extracted from HTML
   static const List<String> _sessions = [
-    'FA01', 'FA02', 'FA03', 'FA04', 'FA05', 'FA06', 'FA07', 'FA08', 'FA09', 'FA10',
-    'FA11', 'FA12', 'FA13', 'FA14', 'FA15', 'FA16', 'FA17', 'FA18', 'FA19', 'FA20',
-    'FA21', 'FA22', 'FA23', 'FA24', 'FA25', 'SP02', 'SP03', 'SP04', 'SP05', 'SP06',
-    'SP07', 'SP08', 'SP09', 'SP10', 'SP11', 'SP12', 'SP13', 'SP14', 'SP15', 'SP16',
-    'SP17', 'SP18', 'SP19', 'SP20', 'SP21', 'SP22', 'SP23', 'SP24', 'SP25', 'SP26',
-    'WS26'
+    'FA01',
+    'FA02',
+    'FA03',
+    'FA04',
+    'FA05',
+    'FA06',
+    'FA07',
+    'FA08',
+    'FA09',
+    'FA10',
+    'FA11',
+    'FA12',
+    'FA13',
+    'FA14',
+    'FA15',
+    'FA16',
+    'FA17',
+    'FA18',
+    'FA19',
+    'FA20',
+    'FA21',
+    'FA22',
+    'FA23',
+    'FA24',
+    'FA25',
+    'SP02',
+    'SP03',
+    'SP04',
+    'SP05',
+    'SP06',
+    'SP07',
+    'SP08',
+    'SP09',
+    'SP10',
+    'SP11',
+    'SP12',
+    'SP13',
+    'SP14',
+    'SP15',
+    'SP16',
+    'SP17',
+    'SP18',
+    'SP19',
+    'SP20',
+    'SP21',
+    'SP22',
+    'SP23',
+    'SP24',
+    'SP25',
+    'SP26',
+    'WS26',
   ];
 
   static const List<String> _departments = [
-    'BBA', 'BBS', 'BCE', 'BCS', 'BDA', 'BDS', 'BEC', 'BEE', 'BEN', 'BES', 'BIT', 'BMD',
-    'BML', 'BMT', 'BPY', 'BS (CE)', 'BSE', 'BSM', 'BTN', 'BTY', 'CVE', 'EEE', 'EPE',
-    'ERS', 'GEO', 'HUM', 'MBA', 'MCS', 'MDS', 'MIT', 'PBT', 'PCE', 'PCM', 'PCS', 'PCV',
-    'PDS', 'PEE', 'PES', 'PGO', 'PGP', 'PHM', 'PMS', 'PMT', 'PPY', 'R05', 'RAI', 'RBA',
-    'RBF', 'RBT', 'RCE', 'RCM', 'RCP', 'RCS', 'RCT', 'RCV', 'RDS', 'REC', 'REE', 'REN',
-    'RER', 'RES', 'RMB', 'RMS', 'RMT', 'RPM', 'RPY', 'RSW'
+    'BBA',
+    'BBS',
+    'BCE',
+    'BCS',
+    'BDA',
+    'BDS',
+    'BEC',
+    'BEE',
+    'BEN',
+    'BES',
+    'BIT',
+    'BMD',
+    'BML',
+    'BMT',
+    'BPY',
+    'BS (CE)',
+    'BSE',
+    'BSM',
+    'BTN',
+    'BTY',
+    'CVE',
+    'EEE',
+    'EPE',
+    'ERS',
+    'GEO',
+    'HUM',
+    'MBA',
+    'MCS',
+    'MDS',
+    'MIT',
+    'PBT',
+    'PCE',
+    'PCM',
+    'PCS',
+    'PCV',
+    'PDS',
+    'PEE',
+    'PES',
+    'PGO',
+    'PGP',
+    'PHM',
+    'PMS',
+    'PMT',
+    'PPY',
+    'R05',
+    'RAI',
+    'RBA',
+    'RBF',
+    'RBT',
+    'RCE',
+    'RCM',
+    'RCP',
+    'RCS',
+    'RCT',
+    'RCV',
+    'RDS',
+    'REC',
+    'REE',
+    'REN',
+    'RER',
+    'RES',
+    'RMB',
+    'RMS',
+    'RMT',
+    'RPM',
+    'RPY',
+    'RSW',
   ];
 
   @override
@@ -129,7 +240,6 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     });
   }
 
-
   // Dynamic preview displaySession-Program-Roll
   // ignore: unused_element
   String get _registrationPreviewText {
@@ -139,7 +249,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   // Validate values for signup checklist
   bool get _hasEightChars => _createPasswordController.text.length >= 8;
-  bool get _hasLetter => RegExp(r'[a-zA-Z]').hasMatch(_createPasswordController.text);
+  bool get _hasLetter =>
+      RegExp(r'[a-zA-Z]').hasMatch(_createPasswordController.text);
   bool get _hasDigit => RegExp(r'\d').hasMatch(_createPasswordController.text);
   bool get _hasValidMaxLength => _createPasswordController.text.length <= 32;
   bool get _passwordsMatch =>
@@ -150,7 +261,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     final rollNo = _rollNoController.text.trim();
     if (rollNo.isEmpty || !RegExp(r'^\d{1,3}$').hasMatch(rollNo)) return false;
     if (_portalPasswordController.text.isEmpty) return false;
-    if (!_hasEightChars || !_hasLetter || !_hasDigit || !_hasValidMaxLength) return false;
+    if (!_hasEightChars || !_hasLetter || !_hasDigit || !_hasValidMaxLength)
+      return false;
     if (!_passwordsMatch) return false;
     if (!_agreedToTerms) return false;
     return true;
@@ -203,8 +315,11 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       }
     } else if (_activeRole == UserRole.vehicle) {
       final vehicleReg = _signInVehicleController.text.trim().toUpperCase();
-      if (vehicleReg.isEmpty || !RegExp(r'^[A-Z]{1,4}-\d{1,4}$').hasMatch(vehicleReg)) {
-        _setError("Enter a valid vehicle registration number, e.g., ABC-32 or AB-4471");
+      if (vehicleReg.isEmpty ||
+          !RegExp(r'^[A-Z]{1,4}-\d{1,4}$').hasMatch(vehicleReg)) {
+        _setError(
+          "Enter a valid vehicle registration number, e.g., ABC-32 or AB-4471",
+        );
         return;
       }
       if (password.isEmpty) {
@@ -219,11 +334,12 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
     try {
       if (_activeRole == UserRole.student) {
-        String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+        String fullRegNo =
+            "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
         final plainPassword = _signInPasswordController.text.trim();
         final response = await _authService.loginStudent(
-          regNo: fullRegNo, 
-          appPassword: plainPassword
+          regNo: fullRegNo,
+          appPassword: plainPassword,
         );
         final fullName = response?['student']?['full_name'];
         final regNo = response?['student']?['reg_no'];
@@ -243,7 +359,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           await prefs.setString('session_role', 'student');
           final preferredRouteId = response['student']?['preferred_route_id'];
           if (preferredRouteId != null) {
-            await prefs.setString('session_preferred_route_id', preferredRouteId);
+            await prefs.setString(
+              'session_preferred_route_id',
+              preferredRouteId,
+            );
           } else {
             await prefs.remove('session_preferred_route_id');
           }
@@ -309,7 +428,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     } catch (e) {
       final errorMsg = friendlyErrorMessage(
         e,
-        fallback: 'Sign-in could not be completed. Please check your credentials and try again.',
+        fallback: 'Incorrect registration number or password.',
+        unauthorizedMessage: 'Incorrect registration number or password.',
+        connectionMessage:
+            'Unable to connect to Commutas. Please check your connection and try again.',
       );
       _setError(errorMsg);
     } finally {
@@ -332,14 +454,18 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       final status = await FlutterBiometricChangeDetector.checkBiometric();
       if (status == AuthChangeStatus.CHANGED) {
         await _biometricService.disableBiometrics();
-        _setError("Biometrics changed on this device. Sign in with your password to re-enable.");
+        _setError(
+          "Biometrics changed on this device. Sign in with your password to re-enable.",
+        );
         return;
       }
     } catch (_) {}
 
     final credentials = await _biometricService.getSavedCredentials();
     if (credentials == null) {
-      _setError("Biometrics not setup. Sign in with password first to enable it.");
+      _setError(
+        "Biometrics not setup. Sign in with password first to enable it.",
+      );
       return;
     }
 
@@ -361,10 +487,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
     try {
       final response = await _authService.loginStudent(
-        regNo: regNo, 
-        appPassword: password
+        regNo: regNo,
+        appPassword: password,
       );
-      
+
       final fullName = response?['student']?['full_name'];
       final regNoFromApi = response?['student']?['reg_no'];
       if (response != null && fullName != null && regNoFromApi != null) {
@@ -395,7 +521,11 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     } catch (e) {
       final errorMsg = friendlyErrorMessage(
         e,
-        fallback: 'Biometric sign-in could not be completed. Use your password or try again.',
+        fallback:
+            'Biometric sign-in could not be completed. Use your password or try again.',
+        unauthorizedMessage: 'Biometric sign-in failed. Use your password or try again.',
+        connectionMessage:
+            'Unable to connect to Commutas. Please check your connection and try again.',
       );
       _setError(errorMsg);
     } finally {
@@ -410,7 +540,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   void _handleSignUp() async {
     if (!_isSignUpValid) return;
 
-    final String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
+    final String fullRegNo =
+        "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
     final String portalPassword = _portalPasswordController.text.trim();
     final String appPassword = _createPasswordController.text.trim();
 
@@ -441,11 +572,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
-
     return Stack(
       children: [
         Scaffold(
@@ -456,19 +584,27 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 // Main Content Card area
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(top: 16.0, bottom: 24.0, left: 20.0, right: 20.0),
+                    padding: const EdgeInsets.only(
+                      top: 16.0,
+                      bottom: 24.0,
+                      left: 20.0,
+                      right: 20.0,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Brand Header: Logo and loopable catchphrase outside the card on top
                         _AnimatedHeader(isRegisterTab: _isRegisterTab),
                         const SizedBox(height: 16.0),
-                        
+
                         // Main Card containing switcher and input fields
                         Container(
                           decoration: BoxDecoration(
                             color: CommutasColors.white,
-                            border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                            border: Border.all(
+                              color: CommutasColors.lineBorder,
+                              width: 1.5,
+                            ),
                             borderRadius: BorderRadius.zero,
                           ),
                           padding: const EdgeInsets.all(20.0),
@@ -478,7 +614,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                               // Switcher Tabs inside the white card at the top
                               _buildTabBar(),
                               const SizedBox(height: 24.0),
-                              _isRegisterTab ? _buildRegisterView() : _buildSignInView(),
+                              _isRegisterTab
+                                  ? _buildRegisterView()
+                                  : _buildSignInView(),
                             ],
                           ),
                         ),
@@ -486,7 +624,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                     ),
                   ),
                 ),
-                
+
                 // Bottom Identity Bar (Fixed branding structure)
                 _buildIdentityBar(),
               ],
@@ -528,7 +666,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: !_isRegisterTab ? CommutasColors.primaryNavy : Colors.transparent,
+                    color: !_isRegisterTab
+                        ? CommutasColors.primaryNavy
+                        : Colors.transparent,
                     width: 2.0,
                   ),
                 ),
@@ -538,7 +678,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: !_isRegisterTab ? CommutasColors.primaryNavy : CommutasColors.slateMuted,
+                  color: !_isRegisterTab
+                      ? CommutasColors.primaryNavy
+                      : CommutasColors.slateMuted,
                 ),
               ),
             ),
@@ -558,7 +700,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: _isRegisterTab ? CommutasColors.primaryNavy : Colors.transparent,
+                    color: _isRegisterTab
+                        ? CommutasColors.primaryNavy
+                        : Colors.transparent,
                     width: 2.0,
                   ),
                 ),
@@ -568,7 +712,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: _isRegisterTab ? CommutasColors.primaryNavy : CommutasColors.slateMuted,
+                  color: _isRegisterTab
+                      ? CommutasColors.primaryNavy
+                      : CommutasColors.slateMuted,
                 ),
               ),
             ),
@@ -592,10 +738,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         ),
         const SizedBox(height: 24.0),
 
-        Text(
-          'Sign in to your account',
-          style: CommutasTextStyles.cardTitle,
-        ),
+        Text('Sign in to your account', style: CommutasTextStyles.cardTitle),
         const SizedBox(height: 20.0),
 
         // Input forms depending on Role
@@ -611,10 +754,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         ],
 
         // Password Text Field
-        Text(
-          'Password',
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text('Password', style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         TextFormField(
           controller: _signInPasswordController,
@@ -623,16 +763,23 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Enter password',
-            hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+            hintStyle: CommutasTextStyles.bodySmall.copyWith(
+              color: CommutasColors.slateMuted,
+            ),
             filled: true,
             fillColor: CommutasColors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 14.0,
+            ),
             enabledBorder: CommutasShapes.inputBorder,
             focusedBorder: CommutasShapes.inputFocusBorder,
             errorBorder: CommutasShapes.inputErrorBorder,
             suffixIcon: IconButton(
               icon: Icon(
-                _obscureSignInPassword ? Icons.visibility : Icons.visibility_off,
+                _obscureSignInPassword
+                    ? Icons.visibility
+                    : Icons.visibility_off,
               ),
               onPressed: () {
                 setState(() {
@@ -687,40 +834,65 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                 width: 52,
                 decoration: BoxDecoration(
                   color: CommutasColors.white,
-                  border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                  border: Border.all(
+                    color: CommutasColors.lineBorder,
+                    width: 1.5,
+                  ),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.fingerprint, color: CommutasColors.primaryNavy, size: 28.0),
+                  icon: const Icon(
+                    Icons.fingerprint,
+                    color: CommutasColors.primaryNavy,
+                    size: 28.0,
+                  ),
                   onPressed: _handleBiometricLogin,
                 ),
               ),
             ],
           )
         else
-          _buildPrimaryButton(
-            label: 'SIGN IN',
-            onPressed: _handleSignIn,
-          ),
+          _buildPrimaryButton(label: 'SIGN IN', onPressed: _handleSignIn),
         if (_activeRole == UserRole.student) ...[
           const SizedBox(height: 20.0),
 
           // Student-only registration redirect
           Row(
             children: [
-              const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
+              const Expanded(
+                child: Divider(
+                  color: CommutasColors.lineBorder,
+                  thickness: 1.5,
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text('OR', style: GoogleFonts.jetBrainsMono(color: CommutasColors.slateMuted, fontSize: 12)),
+                child: Text(
+                  'OR',
+                  style: GoogleFonts.jetBrainsMono(
+                    color: CommutasColors.slateMuted,
+                    fontSize: 12,
+                  ),
+                ),
               ),
-              const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
+              const Expanded(
+                child: Divider(
+                  color: CommutasColors.lineBorder,
+                  thickness: 1.5,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16.0),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('New student? ', style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText)),
+              Text(
+                'New student? ',
+                style: CommutasTextStyles.bodySmall.copyWith(
+                  color: CommutasColors.inkText,
+                ),
+              ),
               GestureDetector(
                 onTap: () {
                   setState(() {
@@ -762,7 +934,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             color: isActive ? CommutasColors.primaryNavy : CommutasColors.white,
             border: Border.fromBorderSide(
               BorderSide(
-                color: isActive ? CommutasColors.primaryNavy : CommutasColors.lineBorder,
+                color: isActive
+                    ? CommutasColors.primaryNavy
+                    : CommutasColors.lineBorder,
                 width: isActive ? 2.0 : 1.5,
               ),
             ),
@@ -772,7 +946,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              color: isActive ? CommutasColors.white : CommutasColors.slateMuted,
+              color: isActive
+                  ? CommutasColors.white
+                  : CommutasColors.slateMuted,
             ),
           ),
         ),
@@ -785,10 +961,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Registration number',
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text('Registration number', style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         // Dropdowns and Roll no input
         Row(
@@ -832,10 +1005,15 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
                   decoration: InputDecoration(
                     counterText: "",
                     hintText: '000',
-                    hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                    hintStyle: CommutasTextStyles.bodySmall.copyWith(
+                      color: CommutasColors.slateMuted,
+                    ),
                     filled: true,
                     fillColor: CommutasColors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 11.0),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 11.0,
+                    ),
                     enabledBorder: CommutasShapes.inputBorder,
                     focusedBorder: CommutasShapes.inputFocusBorder,
                     errorBorder: CommutasShapes.inputErrorBorder,
@@ -903,10 +1081,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          label,
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text(label, style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         TextFormField(
           controller: controller,
@@ -914,10 +1089,15 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: placeholder,
-            hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+            hintStyle: CommutasTextStyles.bodySmall.copyWith(
+              color: CommutasColors.slateMuted,
+            ),
             filled: true,
             fillColor: CommutasColors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 14.0,
+            ),
             enabledBorder: CommutasShapes.inputBorder,
             focusedBorder: CommutasShapes.inputFocusBorder,
             errorBorder: CommutasShapes.inputErrorBorder,
@@ -934,19 +1114,25 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     bool disabled = false,
   }) {
     final isTimerActive = _lockoutSecondsLeft > 0;
-    
+
     // Build background and style config
     Color buttonColor = CommutasColors.primaryNavy;
     Widget buttonContent = Text(
-      isTimerActive ? 'TRY AGAIN IN ${_formatLockoutTime()}' : label.toUpperCase(),
+      isTimerActive
+          ? 'TRY AGAIN IN ${_formatLockoutTime()}'
+          : label.toUpperCase(),
       style: CommutasTextStyles.buttonLabel,
     );
 
     if (disabled || isTimerActive) {
       buttonColor = CommutasColors.sageTint;
       buttonContent = Text(
-        isTimerActive ? 'TRY AGAIN IN ${_formatLockoutTime()}' : label.toUpperCase(),
-        style: CommutasTextStyles.buttonLabel.copyWith(color: CommutasColors.slateMuted),
+        isTimerActive
+            ? 'TRY AGAIN IN ${_formatLockoutTime()}'
+            : label.toUpperCase(),
+        style: CommutasTextStyles.buttonLabel.copyWith(
+          color: CommutasColors.slateMuted,
+        ),
       );
     } else if (_isServerLoading) {
       buttonContent = const SizedBox(
@@ -967,7 +1153,9 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           padding: EdgeInsets.zero,
         ),
-        onPressed: (disabled || _isServerLoading || isTimerActive) ? null : onPressed,
+        onPressed: (disabled || _isServerLoading || isTimerActive)
+            ? null
+            : onPressed,
         child: buttonContent,
       ),
     );
@@ -978,25 +1166,16 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'STUDENT VERIFICATION',
-          style: CommutasTextStyles.sectionEyebrow,
-        ),
+        Text('STUDENT VERIFICATION', style: CommutasTextStyles.sectionEyebrow),
         const SizedBox(height: 8.0),
-        Text(
-          'Create student account',
-          style: CommutasTextStyles.cardTitle,
-        ),
+        Text('Create student account', style: CommutasTextStyles.cardTitle),
         const SizedBox(height: 20.0),
 
         // Registration details
         _buildStudentRegForm(),
 
         // Portal Password Field
-        Text(
-          'Portal password',
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text('Portal password', style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         TextFormField(
           controller: _portalPasswordController,
@@ -1004,16 +1183,23 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Enter university portal password',
-            hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+            hintStyle: CommutasTextStyles.bodySmall.copyWith(
+              color: CommutasColors.slateMuted,
+            ),
             filled: true,
             fillColor: CommutasColors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 14.0,
+            ),
             enabledBorder: CommutasShapes.inputBorder,
             focusedBorder: CommutasShapes.inputFocusBorder,
             errorBorder: CommutasShapes.inputErrorBorder,
             suffixIcon: IconButton(
               icon: Icon(
-                _obscurePortalPassword ? Icons.visibility : Icons.visibility_off,
+                _obscurePortalPassword
+                    ? Icons.visibility
+                    : Icons.visibility_off,
                 color: CommutasColors.slateMuted,
               ),
               onPressed: () {
@@ -1027,29 +1213,39 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         const SizedBox(height: 16.0),
 
         // Create Luma Password Field
-        Text(
-          'Create App password',
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text('Create App password', style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         TextFormField(
           controller: _createPasswordController,
           obscureText: _obscureCreatePassword,
           maxLength: 32,
-          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
+          buildCounter:
+              (
+                context, {
+                required currentLength,
+                required isFocused,
+                required maxLength,
+              }) => null,
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Enter new password',
-            hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+            hintStyle: CommutasTextStyles.bodySmall.copyWith(
+              color: CommutasColors.slateMuted,
+            ),
             filled: true,
             fillColor: CommutasColors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 14.0,
+            ),
             enabledBorder: CommutasShapes.inputBorder,
             focusedBorder: CommutasShapes.inputFocusBorder,
             errorBorder: CommutasShapes.inputErrorBorder,
             suffixIcon: IconButton(
               icon: Icon(
-                _obscureCreatePassword ? Icons.visibility : Icons.visibility_off,
+                _obscureCreatePassword
+                    ? Icons.visibility
+                    : Icons.visibility_off,
                 color: CommutasColors.slateMuted,
               ),
               onPressed: () {
@@ -1063,29 +1259,39 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         const SizedBox(height: 16.0),
 
         // Confirm Luma Password Field
-        Text(
-          'Confirm App password',
-          style: CommutasTextStyles.fieldLabel,
-        ),
+        Text('Confirm App password', style: CommutasTextStyles.fieldLabel),
         const SizedBox(height: 6.0),
         TextFormField(
           controller: _confirmPasswordController,
           obscureText: _obscureConfirmPassword,
           maxLength: 32,
-          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) => null,
+          buildCounter:
+              (
+                context, {
+                required currentLength,
+                required isFocused,
+                required maxLength,
+              }) => null,
           style: CommutasTextStyles.fieldValue,
           decoration: InputDecoration(
             hintText: 'Re-enter new password',
-            hintStyle: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+            hintStyle: CommutasTextStyles.bodySmall.copyWith(
+              color: CommutasColors.slateMuted,
+            ),
             filled: true,
             fillColor: CommutasColors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 14.0),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 14.0,
+            ),
             enabledBorder: CommutasShapes.inputBorder,
             focusedBorder: CommutasShapes.inputFocusBorder,
             errorBorder: CommutasShapes.inputErrorBorder,
             suffixIcon: IconButton(
               icon: Icon(
-                _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                _obscureConfirmPassword
+                    ? Icons.visibility
+                    : Icons.visibility_off,
                 color: CommutasColors.slateMuted,
               ),
               onPressed: () {
@@ -1096,7 +1302,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             ),
           ),
         ),
-        if (_createPasswordController.text.isNotEmpty || _confirmPasswordController.text.isNotEmpty) ...[
+        if (_createPasswordController.text.isNotEmpty ||
+            _confirmPasswordController.text.isNotEmpty) ...[
           const SizedBox(height: 16.0),
           _buildChecklistItem('8+ characters', _hasEightChars),
           _buildChecklistItem('Maximum 32 characters', _hasValidMaxLength),
@@ -1108,57 +1315,70 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
         // Terms and conditions
         // Checkbox aur Text spans wala block jise replace krna hai:
-Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    SizedBox(
-      height: 24,
-      width: 24,
-      child: Checkbox(
-        value: _agreedToTerms,
-        activeColor: CommutasColors.primaryNavy, // theme.dart k mutabiq primaryNavy use ho rha hai
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero), // Strict 0px sharp edges
-        onChanged: (bool? val) {
-          setState(() {
-            _agreedToTerms = val ?? false;
-          });
-        },
-      ),
-    ),
-    const SizedBox(width: 8.0),
-    Expanded(
-      child: RichText(
-        text: TextSpan(
-          text: 'I agree to the ',
-          style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText), // theme.dart k input rules mapping
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextSpan(
-              text: 'Terms and Conditions',
-              style: CommutasTextStyles.bodySmall.copyWith(
-                color: CommutasColors.primaryNavy, // Link color matches your dark navy token style
-                decoration: TextDecoration.underline,
-                fontWeight: FontWeight.bold,
-              ),
-              recognizer: TapGestureRecognizer()
-                ..onTap = () async {
-                  final url = Uri.parse('https://commutas-app.netlify.app/');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                  }
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: Checkbox(
+                value: _agreedToTerms,
+                activeColor: CommutasColors
+                    .primaryNavy, // theme.dart k mutabiq primaryNavy use ho rha hai
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ), // Strict 0px sharp edges
+                onChanged: (bool? val) {
+                  setState(() {
+                    _agreedToTerms = val ?? false;
+                  });
                 },
+              ),
             ),
-            TextSpan(
-              text: '.',
-              style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  text: 'I agree to the ',
+                  style: CommutasTextStyles.bodySmall.copyWith(
+                    color: CommutasColors.inkText,
+                  ), // theme.dart k input rules mapping
+                  children: [
+                    TextSpan(
+                      text: 'Terms and Conditions',
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors
+                            .primaryNavy, // Link color matches your dark navy token style
+                        decoration: TextDecoration.underline,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () async {
+                          final url = Uri.parse(
+                            'https://commutas-app.netlify.app/',
+                          );
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                    ),
+                    TextSpan(
+                      text: '.',
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.inkText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
-      ),
-    ),
-  ],
-),
         const SizedBox(height: 20.0),
-        
+
         _buildPrimaryButton(
           label: 'CREATE ACCOUNT',
           onPressed: _handleSignUp,
@@ -1170,7 +1390,12 @@ Row(
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Already have an account? ', style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText)),
+            Text(
+              'Already have an account? ',
+              style: CommutasTextStyles.bodySmall.copyWith(
+                color: CommutasColors.inkText,
+              ),
+            ),
             GestureDetector(
               onTap: () {
                 setState(() {
@@ -1220,17 +1445,20 @@ Row(
   // Footer fixed Identity Bar
   Widget _buildIdentityBar() {
     final hasFeedback = _errorMessage != null;
-    final isSuccessFeedback = hasFeedback && 
-        (_errorMessage!.toLowerCase().contains('success') || 
-         _errorMessage!.toLowerCase().contains('instructions') || 
-         _errorMessage!.toLowerCase().contains('sent'));
+    final isSuccessFeedback =
+        hasFeedback &&
+        (_errorMessage!.toLowerCase().contains('success') ||
+            _errorMessage!.toLowerCase().contains('instructions') ||
+            _errorMessage!.toLowerCase().contains('sent'));
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       height: 56,
       decoration: BoxDecoration(
-        color: hasFeedback 
-            ? (isSuccessFeedback ? CommutasColors.success : CommutasColors.danger)
+        color: hasFeedback
+            ? (isSuccessFeedback
+                  ? CommutasColors.success
+                  : CommutasColors.danger)
             : CommutasColors.white,
         border: Border(
           top: BorderSide(
@@ -1263,8 +1491,8 @@ Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
-                        isSuccessFeedback 
-                            ? Icons.check_circle_outline 
+                        isSuccessFeedback
+                            ? Icons.check_circle_outline
                             : Icons.warning_amber_rounded,
                         color: CommutasColors.white,
                         size: 20,
@@ -1282,7 +1510,11 @@ Row(
                       ),
                       const SizedBox(width: 8.0),
                       IconButton(
-                        icon: const Icon(Icons.close, color: CommutasColors.white, size: 18),
+                        icon: const Icon(
+                          Icons.close,
+                          color: CommutasColors.white,
+                          size: 18,
+                        ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         onPressed: () {
@@ -1337,7 +1569,8 @@ class _AnimatedHeader extends StatefulWidget {
   State<_AnimatedHeader> createState() => _AnimatedHeaderState();
 }
 
-class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProviderStateMixin {
+class _AnimatedHeaderState extends State<_AnimatedHeader>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _logoOpacity;
   late final Animation<Offset> _logoOffset;
@@ -1365,23 +1598,30 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProvi
       vsync: this,
     );
 
-    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
-    ));
+    _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+      ),
+    );
 
-    _logoOffset = Tween<Offset>(begin: const Offset(0.0, -0.15), end: Offset.zero).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-    ));
+    _logoOffset =
+        Tween<Offset>(
+          begin: const Offset(0.0, -0.15),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
 
-    _textOpacity = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
-    ));
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+      ),
+    );
 
     _controller.forward();
 
@@ -1440,7 +1680,6 @@ class _AnimatedHeaderState extends State<_AnimatedHeader> with SingleTickerProvi
                       height: 75,
                       fit: BoxFit.contain,
                     ),
-
                   ),
                 ),
                 const SizedBox(height: 8.0),
@@ -1578,15 +1817,10 @@ class _MarqueeTextState extends State<_MarqueeText> {
       controller: _scrollController,
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
-      child: Text(
-        widget.text,
-        style: widget.style,
-        maxLines: 1,
-      ),
+      child: Text(widget.text, style: widget.style, maxLines: 1),
     );
   }
 }
-
 
 // ──────────────────────────────────────────────────────────
 // Custom uploader loader at the bottom of the screen
@@ -1600,7 +1834,8 @@ class _LoginBusLoader extends StatefulWidget {
   State<_LoginBusLoader> createState() => _LoginBusLoaderState();
 }
 
-class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProviderStateMixin {
+class _LoginBusLoaderState extends State<_LoginBusLoader>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -1625,7 +1860,9 @@ class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProvi
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
-          border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+          border: Border(
+            top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+          ),
         ),
         padding: const EdgeInsets.only(
           left: 24,
@@ -1644,7 +1881,9 @@ class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProvi
                 animation: _controller,
                 builder: (context, child) {
                   return CustomPaint(
-                    painter: _LoginBusPainter(animationValue: _controller.value),
+                    painter: _LoginBusPainter(
+                      animationValue: _controller.value,
+                    ),
                   );
                 },
               ),
@@ -1652,7 +1891,10 @@ class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProvi
             const SizedBox(height: 24),
             Text(
               widget.message.toUpperCase(),
-              style: CommutasTextStyles.labelBold.copyWith(letterSpacing: 1.5, fontSize: 13),
+              style: CommutasTextStyles.labelBold.copyWith(
+                letterSpacing: 1.5,
+                fontSize: 13,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -1667,7 +1909,9 @@ class _LoginBusLoaderState extends State<_LoginBusLoader> with SingleTickerProvi
               color: CommutasColors.lightGreenBg,
               child: const LinearProgressIndicator(
                 backgroundColor: CommutasColors.lightGreenBg,
-                valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.emeraldGreen),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  CommutasColors.emeraldGreen,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -1712,12 +1956,18 @@ class _LoginBusPainter extends CustomPainter {
     final stripePaint = Paint()
       ..color = CommutasColors.emeraldGreen
       ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8), stripePaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 2, bottom - 14, right - 2, bottom - 8),
+      stripePaint,
+    );
 
     final windowFillPaint = Paint()
       ..color = const Color(0xFFE8F5E9)
       ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18), windowFillPaint);
+    canvas.drawRect(
+      Rect.fromLTRB(left + 8, top + 6, left + 24, top + 18),
+      windowFillPaint,
+    );
 
     for (int i = 0; i < 3; i++) {
       final double wx = left + 32.0 + i * 20.0;
@@ -1746,25 +1996,61 @@ class _LoginBusPainter extends CustomPainter {
     canvas.drawLine(Offset(left, bottom), Offset(right, bottom), paint);
     canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
 
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
-    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 24, top + 6),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 24, top + 6),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 18),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 8, top + 18),
+      paint,
+    );
 
     for (int i = 0; i < 3; i++) {
       final double wx = left + 32.0 + i * 20.0;
       canvas.drawRect(Rect.fromLTWH(wx, top + 6, 14, 12), paint);
     }
 
-    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    canvas.drawLine(
+      Offset(left, bottom - 10),
+      Offset(left - 4, bottom - 10),
+      paint,
+    );
     final rayPaint = Paint()
       ..color = Colors.orangeAccent
       ..strokeWidth = 1.5;
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 14),
+      rayPaint,
+    );
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 6),
+      rayPaint,
+    );
 
-    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
-    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 2),
+      Offset(left + 4, bottom - 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(right - 4, bottom - 2),
+      Offset(right + 4, bottom - 2),
+      paint,
+    );
 
     final double wheelRadius = 8.0;
     final double leftWheelX = left + 20.0;
@@ -1776,32 +2062,48 @@ class _LoginBusPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius - 1.0, wheelFill);
     canvas.drawCircle(Offset(leftWheelX, wheelY), wheelRadius, paint);
-    
+
     final angle = animationValue * 2 * math.pi;
     final spokePaint = Paint()
       ..color = Colors.white
       ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
-    canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius - 1.0, wheelFill);
+    canvas.drawCircle(
+      Offset(rightWheelX, wheelY),
+      wheelRadius - 1.0,
+      wheelFill,
+    );
     canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       spokePaint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       spokePaint,
     );
 
@@ -1816,7 +2118,8 @@ class _LoginBusPainter extends CustomPainter {
     final double exhaustX = right + 2;
     final double exhaustY = bottom - 4 + bounce;
 
-    final double p1X = exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
+    final double p1X =
+        exhaustX + 8.0 + math.sin(animationValue * 3 * math.pi) * 2.0;
     final double p1Y = exhaustY - 4.0 - (animationValue * 10.0);
     final double p1R = 4.0 + (animationValue * 3.0);
     canvas.drawCircle(Offset(p1X, p1Y), p1R, smokePaint);
@@ -1844,5 +2147,3 @@ class _LoginBusPainter extends CustomPainter {
     return oldDelegate.animationValue != animationValue;
   }
 }
-
-

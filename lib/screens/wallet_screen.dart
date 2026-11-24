@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:dio/dio.dart';
 import 'dart:math' as math;
 import '../theme.dart';
 import 'services/wallet_service.dart';
 import 'services/notification_service.dart';
+import 'services/friendly_error_message.dart';
+import '../widgets/commutas_error_state.dart';
 
 class WalletScreen extends StatefulWidget {
   final String? studentRegNo;
@@ -18,12 +19,17 @@ class WalletScreen extends StatefulWidget {
   State<WalletScreen> createState() => _WalletScreenState();
 }
 
-class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
+class _WalletScreenState extends State<WalletScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final WalletService _walletService = WalletService();
-  double _balance = 0.0;
+  double? _balance;
   bool _isLoadingBalance = true;
   bool _isLoadingHistory = true;
   List<Map<String, dynamic>> _transactions = [];
+  String? _balanceError;
+  String? _historyError;
+  bool _balanceIsStale = false;
+  bool _historyIsStale = false;
   String? _accessToken;
   String? _regNo;
   late final AnimationController _bgController;
@@ -32,7 +38,10 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _bgController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+    _bgController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
     _loadSessionData();
   }
 
@@ -60,7 +69,10 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
 
   Future<void> _checkPendingTransactions() async {
     if (_accessToken == null) return;
-    final changed = await _walletService.checkPendingTransactions(_accessToken!, context);
+    final changed = await _walletService.checkPendingTransactions(
+      _accessToken!,
+      context,
+    );
     if (changed && mounted) {
       _refreshAll();
     }
@@ -71,11 +83,11 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
     _accessToken = prefs.getString('session_token');
     _regNo = widget.studentRegNo ?? prefs.getString('session_reg_no');
     await _refreshAll();
-    
+
     // Proactively check status on load
     if (_accessToken != null) {
       _checkPendingTransactions();
-      
+
       // Auto-register device token for push notifications
       NotificationService().autoRegisterToken(_accessToken!);
     }
@@ -87,32 +99,77 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
         setState(() {
           _isLoadingBalance = false;
           _isLoadingHistory = false;
+          _balanceError = null;
+          _historyError = null;
         });
       }
       return;
+    }
+    if (mounted) {
+      setState(() {
+        _isLoadingBalance = true;
+        _isLoadingHistory = true;
+        _balanceError = null;
+        _historyError = null;
+      });
     }
     await Future.wait([_fetchBalance(), _fetchTransactions()]);
   }
 
   Future<void> _fetchBalance() async {
     if (_accessToken == null) return;
-    final balance = await _walletService.fetchWalletBalance(token: _accessToken!);
-    if (mounted) {
-      setState(() {
-        _balance = balance;
-        _isLoadingBalance = false;
-      });
+    try {
+      final balance = await _walletService.fetchWalletBalance(
+        token: _accessToken!,
+      );
+      if (mounted) {
+        setState(() {
+          _balance = balance;
+          _balanceError = null;
+          _balanceIsStale = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _balanceError = friendlyErrorMessage(
+            e,
+            fallback: 'Unable to load your wallet balance. Please try again.',
+          );
+          _balanceIsStale = _balance != null;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingBalance = false);
     }
   }
 
   Future<void> _fetchTransactions() async {
     if (_accessToken == null) return;
-    final transactions = await _walletService.fetchTransactionHistory(token: _accessToken!);
-    if (mounted) {
-      setState(() {
-        _transactions = transactions;
-        _isLoadingHistory = false;
-      });
+    try {
+      final transactions = await _walletService.fetchTransactionHistory(
+        token: _accessToken!,
+      );
+      if (mounted) {
+        setState(() {
+          _transactions = transactions;
+          _historyError = null;
+          _historyIsStale = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _historyError = friendlyErrorMessage(
+            e,
+            fallback:
+                'Unable to load your transaction history. Please try again.',
+          );
+          _historyIsStale = _transactions.isNotEmpty;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingHistory = false);
     }
   }
 
@@ -146,11 +203,16 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
               border: Border.all(color: Colors.white12),
             ),
             child: IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: CommutasColors.primaryNavy),
+              icon: const Icon(
+                Icons.refresh_rounded,
+                color: CommutasColors.primaryNavy,
+              ),
               onPressed: () {
                 setState(() {
                   _isLoadingBalance = true;
                   _isLoadingHistory = true;
+                  _balanceError = null;
+                  _historyError = null;
                 });
                 _refreshAll();
               },
@@ -168,6 +230,16 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildDynamicBalanceCard(),
+              if (_balanceError != null) ...[
+                const SizedBox(height: 12),
+                CommutasErrorBanner(
+                  message: _balanceError!,
+                  onRetry: _fetchBalance,
+                  secondaryText: _balanceIsStale
+                      ? 'Showing your last known balance.'
+                      : null,
+                ),
+              ],
               const SizedBox(height: 16),
               Container(
                 decoration: BoxDecoration(
@@ -176,16 +248,31 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                 child: TopUpActionPanel(onTap: _showTopUpSheet),
               ),
               const SizedBox(height: 24),
-              Text(
-                'Transaction History', 
-                style: CommutasTextStyles.labelBold,
-              ),
+              Text('Transaction History', style: CommutasTextStyles.labelBold),
               const SizedBox(height: 16),
-              _isLoadingHistory
-                  ? _buildLoadingState()
-                  : _transactions.isEmpty
-                      ? _buildEmptyState()
-                      : _buildTransactionList(),
+              if (_historyError != null && _transactions.isEmpty)
+                CommutasErrorBanner(
+                  message: _historyError!,
+                  onRetry: _fetchTransactions,
+                )
+              else if (_isLoadingHistory)
+                _buildLoadingState()
+              else if (_transactions.isEmpty)
+                _buildEmptyState()
+              else ...[
+                if (_historyError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: CommutasErrorBanner(
+                      message: _historyError!,
+                      onRetry: _fetchTransactions,
+                      secondaryText: _historyIsStale
+                          ? 'Showing your last known transactions.'
+                          : null,
+                    ),
+                  ),
+                _buildTransactionList(),
+              ],
             ],
           ),
         ),
@@ -196,14 +283,14 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
   Widget _buildDynamicBalanceCard() {
     Color glowColor;
     Color baseColor;
-    
-    if (_balance > 1000) {
+
+    if (_balance != null && _balance! > 1000) {
       baseColor = CommutasColors.primaryNavy;
       glowColor = CommutasColors.emeraldGreen.withValues(alpha: 0.3);
-    } else if (_balance >= 100) {
+    } else if (_balance != null && _balance! >= 100) {
       baseColor = CommutasColors.primaryNavy;
       glowColor = Colors.transparent;
-    } else if (_balance > 0) {
+    } else if (_balance != null && _balance! > 0) {
       baseColor = CommutasColors.primaryNavy;
       glowColor = Colors.orangeAccent.withValues(alpha: 0.15);
     } else {
@@ -228,21 +315,14 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
       child: Stack(
         children: [
           // Background subtle pattern
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _SubtleGridPainter(),
-            ),
-          ),
+          Positioned.fill(child: CustomPaint(painter: _SubtleGridPainter())),
           // Glow effect
           if (glowColor != Colors.transparent)
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    colors: [
-                      glowColor,
-                      Colors.transparent,
-                    ],
+                    colors: [glowColor, Colors.transparent],
                     radius: 1.5,
                     center: const Alignment(-0.5, -0.5),
                   ),
@@ -265,22 +345,45 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                   ),
                   child: Row(
                     children: [
-                      Expanded(flex: 2, child: Container(decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.white24, width: 1.5))))),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              right: BorderSide(
+                                color: Colors.white24,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                       Expanded(flex: 3, child: Container()),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'CURRENT BALANCE',
-                  style: CommutasTextStyles.labelBold.copyWith(color: Colors.white70, letterSpacing: 2),
+                  _balanceIsStale
+                      ? 'LAST KNOWN BALANCE'
+                      : _balance == null
+                      ? 'BALANCE UNAVAILABLE'
+                      : 'CURRENT BALANCE',
+                  style: CommutasTextStyles.labelBold.copyWith(
+                    color: Colors.white70,
+                    letterSpacing: 2,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _isLoadingBalance
                     ? AnimatedBuilder(
                         animation: _bgController,
                         builder: (context, _) {
-                          final opacity = 0.3 + (math.sin(_bgController.value * math.pi * 2) + 1) * 0.35;
+                          final opacity =
+                              0.3 +
+                              (math.sin(_bgController.value * math.pi * 2) +
+                                      1) *
+                                  0.35;
                           return Opacity(
                             opacity: opacity,
                             child: Container(
@@ -291,11 +394,20 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                           );
                         },
                       )
+                    : _balance == null
+                    ? Text(
+                        'Unavailable',
+                        style: CommutasTextStyles.heading1.copyWith(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
                     : FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: TweenAnimationBuilder<double>(
-                          tween: Tween<double>(begin: 0, end: _balance),
+                          tween: Tween<double>(begin: 0, end: _balance!),
                           duration: const Duration(milliseconds: 800),
                           curve: Curves.easeOutCubic,
                           builder: (context, value, child) {
@@ -338,17 +450,19 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
       child: AnimatedBuilder(
         animation: _bgController,
         builder: (context, _) {
-          final opacity = 0.3 + (math.sin(_bgController.value * math.pi * 2) + 1) * 0.35;
+          final opacity =
+              0.3 + (math.sin(_bgController.value * math.pi * 2) + 1) * 0.35;
           return Opacity(
             opacity: opacity,
             child: Column(
-              children: List.generate(3, (index) => 
-                Container(
+              children: List.generate(
+                3,
+                (index) => Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   height: 60,
                   width: double.infinity,
                   color: Colors.grey.shade200,
-                )
+                ),
               ),
             ),
           );
@@ -371,7 +485,9 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
             const SizedBox(height: 16),
             Text(
               'No Transactions Yet',
-              style: CommutasTextStyles.labelBold.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.labelBold.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -387,7 +503,9 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
 
   Widget _buildTransactionList() {
     return Container(
-      decoration: CommutasShapes.cardDecoration.copyWith(borderRadius: BorderRadius.zero),
+      decoration: CommutasShapes.cardDecoration.copyWith(
+        borderRadius: BorderRadius.zero,
+      ),
       padding: const EdgeInsets.all(16),
       child: Column(
         children: _transactions.asMap().entries.map((entry) {
@@ -401,8 +519,11 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
   Widget _buildTransactionItem(Map<String, dynamic> tx, {bool isLast = false}) {
     final String status = tx['status'] ?? 'UNKNOWN';
     final double rawAmount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-    final String type = tx['type']?.toString().toUpperCase() ?? (rawAmount < 0 ? 'FARE' : 'TOP_UP');
-    final bool isFare = type == 'FARE' || type == 'FARE_DEDUCTION' || rawAmount < 0;
+    final String type =
+        tx['type']?.toString().toUpperCase() ??
+        (rawAmount < 0 ? 'FARE' : 'TOP_UP');
+    final bool isFare =
+        type == 'FARE' || type == 'FARE_DEDUCTION' || rawAmount < 0;
     final double amount = rawAmount.abs();
 
     final String createdAt = tx['created_at'] ?? '';
@@ -413,7 +534,7 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
     String displayTitle;
 
     if (isFare) {
-      statusColor = Colors.orangeAccent;
+      statusColor = CommutasColors.danger;
       statusIcon = Icons.directions_bus;
       displayTitle = 'Fare Deduction';
       if (status == 'SUCCESS') displayStatus = 'PAID';
@@ -436,7 +557,8 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
     String formattedDate = createdAt;
     try {
       final dt = DateTime.parse(createdAt).toLocal();
-      formattedDate = '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      formattedDate =
+          '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {}
 
     return Column(
@@ -458,9 +580,19 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(displayTitle, style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      displayTitle,
+                      style: CommutasTextStyles.bodyMedium.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(formattedDate, style: CommutasTextStyles.bodySmall.copyWith(fontSize: 10)),
+                    Text(
+                      formattedDate,
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        fontSize: 10,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -469,18 +601,27 @@ class _WalletScreenState extends State<WalletScreen> with WidgetsBindingObserver
                 children: [
                   Text(
                     '${isFare ? "-" : "+"} Rs. ${amount.toStringAsFixed(0)}',
-                    style: CommutasTextStyles.labelBold.copyWith(color: statusColor, fontSize: 14),
+                    style: CommutasTextStyles.labelBold.copyWith(
+                      color: statusColor,
+                      fontSize: 14,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.zero,
                     ),
                     child: Text(
                       displayStatus,
-                      style: CommutasTextStyles.labelBold.copyWith(fontSize: 8, color: statusColor),
+                      style: CommutasTextStyles.labelBold.copyWith(
+                        fontSize: 8,
+                        color: statusColor,
+                      ),
                     ),
                   ),
                 ],
@@ -512,7 +653,8 @@ class _TopUpSheet extends StatefulWidget {
   State<_TopUpSheet> createState() => _TopUpSheetState();
 }
 
-class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin {
+class _TopUpSheetState extends State<_TopUpSheet>
+    with TickerProviderStateMixin {
   final TextEditingController _amountController = TextEditingController();
   bool _isProcessing = false;
   String? _error;
@@ -546,6 +688,7 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
   }
 
   Future<void> _initiatePayment() async {
+    if (_isProcessing) return;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) {
       setState(() => _error = 'Enter an amount');
@@ -604,7 +747,8 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
         } else {
           setState(() {
             _isProcessing = false;
-            _error = 'Could not open payment browser. Direct checkout URL: ${response['checkout_url']}';
+            _error =
+                'Could not open payment browser. Direct checkout URL: ${response['checkout_url']}';
           });
           _busController.stop();
         }
@@ -615,17 +759,16 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
         });
         _busController.stop();
       }
-    } on DioException catch (e) {
-      final detail = e.response?.data?['detail'];
-      setState(() {
-        _isProcessing = false;
-        _error = detail?.toString() ?? 'Payment initiation failed. Check your connection.';
-      });
-      _busController.stop();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isProcessing = false;
-        _error = 'An unexpected error occurred.';
+        _error = friendlyErrorMessage(
+          e,
+          fallback: 'Unable to initiate payment. Please try again.',
+          connectionMessage:
+              'Unable to initiate payment. Please check your connection and try again.',
+        );
       });
       _busController.stop();
     }
@@ -636,7 +779,9 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: CommutasColors.lineBorder, width: 1)),
+        border: Border(
+          top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+        ),
       ),
       padding: EdgeInsets.only(
         left: 24,
@@ -660,11 +805,18 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
             children: [
               Text(
                 'TOP UP WALLET',
-                style: CommutasTextStyles.labelBold.copyWith(fontSize: 13, letterSpacing: 1.5),
+                style: CommutasTextStyles.labelBold.copyWith(
+                  fontSize: 13,
+                  letterSpacing: 1.5,
+                ),
               ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close, color: CommutasColors.slateMuted, size: 20),
+                child: const Icon(
+                  Icons.close,
+                  color: CommutasColors.slateMuted,
+                  size: 20,
+                ),
               ),
             ],
           ),
@@ -679,24 +831,31 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-            ],
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             style: CommutasTextStyles.heading1.copyWith(fontSize: 28),
             decoration: InputDecoration(
               prefixText: 'Rs. ',
-              prefixStyle: CommutasTextStyles.heading1.copyWith(fontSize: 28, color: CommutasColors.slateMuted),
+              prefixStyle: CommutasTextStyles.heading1.copyWith(
+                fontSize: 28,
+                color: CommutasColors.slateMuted,
+              ),
               hintText: '0',
-              hintStyle: CommutasTextStyles.heading1.copyWith(fontSize: 28, color: CommutasColors.lineBorder),
+              hintStyle: CommutasTextStyles.heading1.copyWith(
+                fontSize: 28,
+                color: CommutasColors.lineBorder,
+              ),
               border: CommutasShapes.inputBorder,
               enabledBorder: CommutasShapes.inputBorder,
               focusedBorder: CommutasShapes.inputFocusBorder,
               errorBorder: CommutasShapes.inputErrorBorder,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
             ),
             onChanged: (val) {
               final parsed = int.tryParse(val);
-              
+
               if (parsed != null && parsed > 10000) {
                 _amountController.text = '10000';
                 _amountController.selection = TextSelection.fromPosition(
@@ -708,7 +867,7 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
                 });
                 return;
               }
-              
+
               setState(() {
                 _error = null;
                 if (parsed != null && _quickAmounts.contains(parsed)) {
@@ -726,19 +885,34 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
             children: _quickAmounts.map((amount) {
               return Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(right: amount != _quickAmounts.last ? 8.0 : 0),
+                  padding: EdgeInsets.only(
+                    right: amount != _quickAmounts.last ? 8.0 : 0,
+                  ),
                   child: OutlinedButton(
                     onPressed: () => _selectQuickAmount(amount),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _selectedAmount == amount ? Colors.white : CommutasColors.primaryNavy,
-                      backgroundColor: _selectedAmount == amount ? CommutasColors.emeraldGreen : Colors.transparent,
+                      foregroundColor: _selectedAmount == amount
+                          ? Colors.white
+                          : CommutasColors.primaryNavy,
+                      backgroundColor: _selectedAmount == amount
+                          ? CommutasColors.emeraldGreen
+                          : Colors.transparent,
                       side: BorderSide(
-                        color: _selectedAmount == amount ? CommutasColors.emeraldGreen : CommutasColors.lineBorder,
+                        color: _selectedAmount == amount
+                            ? CommutasColors.emeraldGreen
+                            : CommutasColors.lineBorder,
                       ),
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: Text('Rs. $amount', style: CommutasTextStyles.labelBold.copyWith(fontSize: 11)),
+                    child: Text(
+                      'Rs. $amount',
+                      style: CommutasTextStyles.labelBold.copyWith(
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -752,17 +926,25 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: CommutasColors.danger.withOpacity(0.08),
-                border: Border.all(color: CommutasColors.danger.withOpacity(0.3)),
+                border: Border.all(
+                  color: CommutasColors.danger.withOpacity(0.3),
+                ),
                 borderRadius: BorderRadius.zero,
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: CommutasColors.danger, size: 16),
+                  const Icon(
+                    Icons.error_outline,
+                    color: CommutasColors.danger,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.danger),
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.danger,
+                      ),
                     ),
                   ),
                 ],
@@ -776,16 +958,25 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
             height: 48,
             child: TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: (_selectedAmount != null || (_amountController.text.isNotEmpty && double.tryParse(_amountController.text) != null && double.parse(_amountController.text) >= 10 && double.parse(_amountController.text) <= 10000))
+                backgroundColor:
+                    (_selectedAmount != null ||
+                        (_amountController.text.isNotEmpty &&
+                            double.tryParse(_amountController.text) != null &&
+                            double.parse(_amountController.text) >= 10 &&
+                            double.parse(_amountController.text) <= 10000))
                     ? CommutasColors.emeraldGreen
                     : CommutasColors.primaryNavy,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 padding: EdgeInsets.zero,
               ),
               onPressed: _initiatePayment,
               child: Text(
                 'PROCEED TO PAYMENT',
-                style: CommutasTextStyles.buttonLabel.copyWith(color: Colors.white),
+                style: CommutasTextStyles.buttonLabel.copyWith(
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -794,7 +985,11 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_outline, size: 12, color: CommutasColors.slateMuted),
+                const Icon(
+                  Icons.lock_outline,
+                  size: 12,
+                  color: CommutasColors.slateMuted,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   'Secured by Safepay',
@@ -841,7 +1036,9 @@ class _TopUpSheetState extends State<_TopUpSheet> with TickerProviderStateMixin 
           color: CommutasColors.cobaltTint,
           child: const LinearProgressIndicator(
             backgroundColor: Color(0xFFEEF0FC),
-            valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.accentCobalt),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              CommutasColors.accentCobalt,
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -881,10 +1078,26 @@ class _TopUpBusPainter extends CustomPainter {
     canvas.drawLine(Offset(left, top), Offset(left, bottom), paint);
 
     // Front windshield
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 24, top + 6), paint);
-    canvas.drawLine(Offset(left + 24, top + 6), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 18), Offset(left + 24, top + 18), paint);
-    canvas.drawLine(Offset(left + 8, top + 6), Offset(left + 8, top + 18), paint);
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 24, top + 6),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 24, top + 6),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 18),
+      Offset(left + 24, top + 18),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(left + 8, top + 6),
+      Offset(left + 8, top + 18),
+      paint,
+    );
 
     // Windows
     for (int i = 0; i < 3; i++) {
@@ -893,16 +1106,36 @@ class _TopUpBusPainter extends CustomPainter {
     }
 
     // Headlights
-    canvas.drawLine(Offset(left, bottom - 10), Offset(left - 4, bottom - 10), paint);
+    canvas.drawLine(
+      Offset(left, bottom - 10),
+      Offset(left - 4, bottom - 10),
+      paint,
+    );
     final rayPaint = Paint()
       ..color = Colors.orangeAccent.withValues(alpha: 0.8)
       ..strokeWidth = 1.5;
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 14), rayPaint);
-    canvas.drawLine(Offset(left - 4, bottom - 10), Offset(left - 20, bottom - 6), rayPaint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 14),
+      rayPaint,
+    );
+    canvas.drawLine(
+      Offset(left - 4, bottom - 10),
+      Offset(left - 20, bottom - 6),
+      rayPaint,
+    );
 
     // Bumper
-    canvas.drawLine(Offset(left - 4, bottom - 2), Offset(left + 4, bottom - 2), paint);
-    canvas.drawLine(Offset(right - 4, bottom - 2), Offset(right + 4, bottom - 2), paint);
+    canvas.drawLine(
+      Offset(left - 4, bottom - 2),
+      Offset(left + 4, bottom - 2),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(right - 4, bottom - 2),
+      Offset(right + 4, bottom - 2),
+      paint,
+    );
 
     // Wheels
     final double wheelRadius = 8.0;
@@ -914,24 +1147,36 @@ class _TopUpBusPainter extends CustomPainter {
     final angle = animationValue * 2 * math.pi;
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       paint,
     );
     canvas.drawLine(
       Offset(leftWheelX, wheelY),
-      Offset(leftWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        leftWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       paint,
     );
 
     canvas.drawCircle(Offset(rightWheelX, wheelY), wheelRadius, paint);
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle), wheelY + wheelRadius * math.sin(angle)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle),
+        wheelY + wheelRadius * math.sin(angle),
+      ),
       paint,
     );
     canvas.drawLine(
       Offset(rightWheelX, wheelY),
-      Offset(rightWheelX + wheelRadius * math.cos(angle + math.pi), wheelY + wheelRadius * math.sin(angle + math.pi)),
+      Offset(
+        rightWheelX + wheelRadius * math.cos(angle + math.pi),
+        wheelY + wheelRadius * math.sin(angle + math.pi),
+      ),
       paint,
     );
   }
@@ -954,15 +1199,24 @@ class _WalletBackgroundPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
       ..strokeCap = StrokeCap.round;
-    
+
     for (int i = 0; i < 6; i++) {
       final phase = (animationValue + i * 0.167) % 1.0;
-      final sx = size.width * (0.08 + (i % 3) * 0.38) + math.sin(phase * math.pi * 2 + i) * 12;
-      final sy = size.height * (0.1 + (i ~/ 3) * 0.65) + math.cos(phase * math.pi * 2.5 + i) * 10;
-      final symbolOpacity = (math.sin(phase * math.pi * 2) * 0.5 + 0.5).clamp(0.0, 1.0);
-      
-      symbolPaint.color = CommutasColors.emeraldGreen.withValues(alpha: 0.08 * symbolOpacity);
-      
+      final sx =
+          size.width * (0.08 + (i % 3) * 0.38) +
+          math.sin(phase * math.pi * 2 + i) * 12;
+      final sy =
+          size.height * (0.1 + (i ~/ 3) * 0.65) +
+          math.cos(phase * math.pi * 2.5 + i) * 10;
+      final symbolOpacity = (math.sin(phase * math.pi * 2) * 0.5 + 0.5).clamp(
+        0.0,
+        1.0,
+      );
+
+      symbolPaint.color = CommutasColors.emeraldGreen.withValues(
+        alpha: 0.08 * symbolOpacity,
+      );
+
       // Draw a small "₨" shape
       final symbolSize = 10.0 + math.sin(phase * math.pi) * 3;
       canvas.drawCircle(Offset(sx, sy), symbolSize, symbolPaint);
@@ -979,7 +1233,7 @@ class _WalletBackgroundPainter extends CustomPainter {
       ..color = Colors.green.shade800.withValues(alpha: 0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
-      
+
     final walletFillPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.15)
       ..style = PaintingStyle.fill;
@@ -993,28 +1247,51 @@ class _WalletBackgroundPainter extends CustomPainter {
     // Pulsing glow behind wallet that reacts to notes entering
     final glowPhase = (math.sin(animationValue * math.pi * 6) * 0.5 + 0.5);
     final glowPaint = Paint()
-      ..color = CommutasColors.emeraldGreen.withValues(alpha: 0.06 + 0.04 * glowPhase)
+      ..color = CommutasColors.emeraldGreen.withValues(
+        alpha: 0.06 + 0.04 * glowPhase,
+      )
       ..style = PaintingStyle.fill
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(walletX - 15, walletY - 10, walletWidth + 30, walletHeight + 20),
+        Rect.fromLTWH(
+          walletX - 15,
+          walletY - 10,
+          walletWidth + 30,
+          walletHeight + 20,
+        ),
         const Radius.circular(16),
       ),
       glowPaint,
     );
-    
-    final walletRect = Rect.fromLTWH(walletX, walletY, walletWidth, walletHeight);
-    canvas.drawRRect(RRect.fromRectAndRadius(walletRect, const Radius.circular(8)), walletFillPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(walletRect, const Radius.circular(8)), walletStrokePaint);
-    
+
+    final walletRect = Rect.fromLTWH(
+      walletX,
+      walletY,
+      walletWidth,
+      walletHeight,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(walletRect, const Radius.circular(8)),
+      walletFillPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(walletRect, const Radius.circular(8)),
+      walletStrokePaint,
+    );
+
     // Wallet flap detail
     canvas.drawLine(
       Offset(walletX, walletY + 25),
       Offset(walletX + walletWidth, walletY + 25),
       walletStrokePaint,
     );
-    final claspRect = Rect.fromLTWH(walletX + walletWidth / 2 - 12, walletY + 20, 24, 10);
+    final claspRect = Rect.fromLTWH(
+      walletX + walletWidth / 2 - 12,
+      walletY + 20,
+      24,
+      10,
+    );
     canvas.drawRect(claspRect, walletFillPaint);
     canvas.drawRect(claspRect, walletStrokePaint);
 
@@ -1035,20 +1312,20 @@ class _WalletBackgroundPainter extends CustomPainter {
     for (int i = 0; i < 3; i++) {
       // Stagger the animation of the 3 notes
       double progress = (animationValue + (i * 0.33)) % 1.0;
-      
+
       // Notes fall from above the screen into the wallet opening
       final double noteStartY = -40.0;
       final double noteEndY = walletY + 10.0; // Ends just inside the wallet
       final double noteY = noteStartY + (noteEndY - noteStartY) * progress;
-      
+
       // Slight horizontal sway for a floating leaf effect
       final double sway = math.sin(progress * math.pi * 4) * 20;
       // Shift note path left by 30 to match the wallet position
       final double noteX = (size.width / 2) - 25 + sway - 30;
-      
+
       // Slight rotation for natural falling feel
       final double rotation = math.sin(progress * math.pi * 3) * 0.15;
-      
+
       // Fade out smoothly as it enters the wallet
       double opacity = 1.0;
       if (progress > 0.75) {
@@ -1058,32 +1335,40 @@ class _WalletBackgroundPainter extends CustomPainter {
       if (progress < 0.1) {
         opacity = (progress * 10).clamp(0.0, 1.0);
       }
-      
+
       if (opacity > 0 && noteY < walletY + 15) {
         canvas.save();
         canvas.translate(noteX + 25, noteY + 15);
         canvas.rotate(rotation);
         canvas.translate(-(noteX + 25), -(noteY + 15));
-        
+
         final currentNotePaint = Paint()
           ..color = CommutasColors.emeraldGreen.withValues(alpha: 0.3 * opacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
-          
+
         final currentFillPaint = Paint()
-          ..color = CommutasColors.emeraldGreen.withValues(alpha: 0.12 * opacity)
+          ..color = CommutasColors.emeraldGreen.withValues(
+            alpha: 0.12 * opacity,
+          )
           ..style = PaintingStyle.fill;
 
         final noteRect = Rect.fromLTWH(noteX, noteY, 50, 30);
-        
+
         // Draw filled note
-        canvas.drawRRect(RRect.fromRectAndRadius(noteRect, const Radius.circular(4)), currentFillPaint);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(noteRect, const Radius.circular(4)),
+          currentFillPaint,
+        );
         // Draw note outline
-        canvas.drawRRect(RRect.fromRectAndRadius(noteRect, const Radius.circular(4)), currentNotePaint);
-        
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(noteRect, const Radius.circular(4)),
+          currentNotePaint,
+        );
+
         // Draw currency inner circle
         canvas.drawCircle(Offset(noteX + 25, noteY + 15), 6, currentNotePaint);
-        
+
         // Draw small horizontal lines inside circle (₨ detail)
         final detailPaint = Paint()
           ..color = CommutasColors.emeraldGreen.withValues(alpha: 0.2 * opacity)
@@ -1099,7 +1384,7 @@ class _WalletBackgroundPainter extends CustomPainter {
           Offset(noteX + 28, noteY + 17),
           detailPaint,
         );
-        
+
         // Border detail lines on note edges
         canvas.drawLine(
           Offset(noteX + 4, noteY + 5),
@@ -1111,7 +1396,7 @@ class _WalletBackgroundPainter extends CustomPainter {
           Offset(noteX + 46, noteY + 25),
           detailPaint,
         );
-        
+
         canvas.restore();
       }
     }
@@ -1132,14 +1417,18 @@ class TopUpActionPanel extends StatefulWidget {
   State<TopUpActionPanel> createState() => _TopUpActionPanelState();
 }
 
-class _TopUpActionPanelState extends State<TopUpActionPanel> with SingleTickerProviderStateMixin {
+class _TopUpActionPanelState extends State<TopUpActionPanel>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _isPressed = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
   }
 
   @override
@@ -1187,7 +1476,9 @@ class _TopUpActionPanelState extends State<TopUpActionPanel> with SingleTickerPr
                   animation: _controller,
                   builder: (context, child) {
                     return CustomPaint(
-                      painter: _NfcPulsePainter(animationValue: _controller.value),
+                      painter: _NfcPulsePainter(
+                        animationValue: _controller.value,
+                      ),
                     );
                   },
                 ),
@@ -1198,9 +1489,19 @@ class _TopUpActionPanelState extends State<TopUpActionPanel> with SingleTickerPr
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Tap to Top Up', style: CommutasTextStyles.labelBold.copyWith(fontSize: 16)),
+                    Text(
+                      'Tap to Top Up',
+                      style: CommutasTextStyles.labelBold.copyWith(
+                        fontSize: 16,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text('Add balance instantly', style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted)),
+                    Text(
+                      'Add balance instantly',
+                      style: CommutasTextStyles.bodySmall.copyWith(
+                        color: CommutasColors.slateMuted,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1211,17 +1512,28 @@ class _TopUpActionPanelState extends State<TopUpActionPanel> with SingleTickerPr
                 child: AnimatedBuilder(
                   animation: _controller,
                   builder: (context, child) {
-                    final floatOffset = math.sin(_controller.value * 2 * math.pi) * 4;
+                    final floatOffset =
+                        math.sin(_controller.value * 2 * math.pi) * 4;
                     return Transform.translate(
                       offset: Offset(0, floatOffset),
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: CommutasColors.emeraldGreen.withValues(alpha: 0.1),
+                          color: CommutasColors.emeraldGreen.withValues(
+                            alpha: 0.1,
+                          ),
                           shape: BoxShape.rectangle,
-                          border: Border.all(color: CommutasColors.emeraldGreen.withValues(alpha: 0.5)),
+                          border: Border.all(
+                            color: CommutasColors.emeraldGreen.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
                         ),
-                        child: const Icon(Icons.credit_card, color: CommutasColors.emeraldGreen, size: 20),
+                        child: const Icon(
+                          Icons.credit_card,
+                          color: CommutasColors.emeraldGreen,
+                          size: 20,
+                        ),
                       ),
                     );
                   },
@@ -1248,15 +1560,17 @@ class _NfcPulsePainter extends CustomPainter {
       ..strokeWidth = 2.0;
 
     final center = Offset(size.width / 4, size.height);
-    
+
     for (int i = 0; i < 3; i++) {
       // stagger each wave
       double progress = (animationValue + (i * 0.33)) % 1.0;
       double radius = 10 + (progress * size.width);
       double opacity = 1.0 - progress;
-      
-      paint.color = CommutasColors.emeraldGreen.withValues(alpha: opacity * 0.5);
-      
+
+      paint.color = CommutasColors.emeraldGreen.withValues(
+        alpha: opacity * 0.5,
+      );
+
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -math.pi / 2,
@@ -1281,12 +1595,12 @@ class _SubtleGridPainter extends CustomPainter {
       ..strokeWidth = 1.0;
 
     const double spacing = 20.0;
-    
+
     // Draw vertical lines
     for (double i = 0; i < size.width; i += spacing) {
       canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
     }
-    
+
     // Draw horizontal lines
     for (double i = 0; i < size.height; i += spacing) {
       canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);

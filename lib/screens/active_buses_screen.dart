@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/route_service.dart';
+import 'services/friendly_error_message.dart';
 import '../theme.dart';
 import 'active_bus_map_screen.dart';
+import '../widgets/commutas_error_state.dart';
 
 class ActiveBusesScreen extends StatefulWidget {
   const ActiveBusesScreen({super.key});
@@ -11,7 +13,8 @@ class ActiveBusesScreen extends StatefulWidget {
   State<ActiveBusesScreen> createState() => _ActiveBusesScreenState();
 }
 
-class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTickerProviderStateMixin {
+class _ActiveBusesScreenState extends State<ActiveBusesScreen>
+    with SingleTickerProviderStateMixin {
   final RouteService _routeService = RouteService();
   List<Map<String, dynamic>> _activeBuses = [];
   bool _isLoading = true;
@@ -40,7 +43,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
       }
 
       final buses = await _routeService.fetchActiveBuses(token: token);
-      
+
       if (mounted) {
         setState(() {
           _activeBuses = buses;
@@ -58,7 +61,10 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception:', '').trim();
+          _errorMessage = friendlyErrorMessage(
+            e,
+            fallback: 'Unable to load active buses. Please try again.',
+          );
           _isLoading = false;
         });
       }
@@ -91,13 +97,17 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
             const SizedBox(height: 24),
             Text(
               'No Active Buses',
-              style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
+              style: CommutasTextStyles.heading2.copyWith(
+                color: CommutasColors.primaryNavy,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'There are no buses running on active trips at the moment. Please check back later during transit hours.',
-              style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.bodyMedium.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -129,13 +139,18 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
             const SizedBox(height: 16),
             Text(
               'Failed to Load Active Buses',
-              style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.danger),
+              style: CommutasTextStyles.heading2.copyWith(
+                color: CommutasColors.danger,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              _errorMessage ?? 'An unexpected error occurred. Please try again.',
-              style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+              _errorMessage ??
+                  'An unexpected error occurred. Please try again.',
+              style: CommutasTextStyles.bodyMedium.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -143,8 +158,13 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
               onPressed: _loadActiveBuses,
               style: ElevatedButton.styleFrom(
                 backgroundColor: CommutasColors.primaryNavy,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
               child: Text('Retry', style: CommutasTextStyles.buttonLabel),
             ),
@@ -168,63 +188,85 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
 
   Widget _buildFilterBar() {
     final filters = _getRouteFilters();
-    if (filters.isEmpty) return const SizedBox.shrink();
+    if (filters.isEmpty && _errorMessage == null)
+      return const SizedBox.shrink();
 
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        children: [
-          const Icon(Icons.filter_list, size: 20, color: CommutasColors.primaryNavy),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedRouteId,
-                hint: Text(
-                  'All Routes',
-                  style: CommutasTextStyles.bodyMedium.copyWith(
-                    color: CommutasColors.primaryNavy,
-                    fontWeight: FontWeight.bold,
-                  ),
+    return Column(
+      children: [
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: CommutasErrorBanner(
+              message: _errorMessage!,
+              onRetry: _loadActiveBuses,
+              secondaryText: 'Showing the last successfully loaded buses.',
+            ),
+          ),
+        if (filters.isNotEmpty)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.filter_list,
+                  size: 20,
+                  color: CommutasColors.primaryNavy,
                 ),
-                isExpanded: true,
-                items: [
-                  DropdownMenuItem<String>(
-                    value: null,
-                    child: Text(
-                      'All Routes',
-                      style: CommutasTextStyles.bodyMedium.copyWith(
-                        color: CommutasColors.primaryNavy,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  ...filters.map((f) {
-                    return DropdownMenuItem<String>(
-                      value: f['id'],
-                      child: Text(
-                        f['id']!,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedRouteId,
+                      hint: Text(
+                        'All Routes',
                         style: CommutasTextStyles.bodyMedium.copyWith(
                           color: CommutasColors.primaryNavy,
                           fontWeight: FontWeight.bold,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    );
-                  }),
-                ],
-                onChanged: (val) {
-                  setState(() {
-                    _selectedRouteId = val;
-                  });
-                },
-              ),
+                      isExpanded: true,
+                      items: [
+                        DropdownMenuItem<String>(
+                          value: null,
+                          child: Text(
+                            'All Routes',
+                            style: CommutasTextStyles.bodyMedium.copyWith(
+                              color: CommutasColors.primaryNavy,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        ...filters.map((f) {
+                          return DropdownMenuItem<String>(
+                            value: f['id'],
+                            child: Text(
+                              f['id']!,
+                              style: CommutasTextStyles.bodyMedium.copyWith(
+                                color: CommutasColors.primaryNavy,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedRouteId = val;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -244,13 +286,17 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
             const SizedBox(height: 16),
             Text(
               'No Matching Buses',
-              style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.primaryNavy),
+              style: CommutasTextStyles.heading2.copyWith(
+                color: CommutasColors.primaryNavy,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               'There are no active buses running on the selected route at the moment.',
-              style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.bodyMedium.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -284,7 +330,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: AppBar(
-        title: const Text('TRACK ACTIVE BUSES'),
+        title: const Text('Track Active Buses'),
         centerTitle: true,
         actions: [
           IconButton(
@@ -295,203 +341,260 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen> with SingleTicker
       ),
       body: Column(
         children: [
-          if (!_isLoading && _errorMessage == null && _activeBuses.isNotEmpty)
-            _buildFilterBar(),
+          if (!_isLoading && _activeBuses.isNotEmpty) _buildFilterBar(),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadActiveBuses,
               color: CommutasColors.primaryNavy,
               child: _isLoading
                   ? _buildLoadingState()
-                  : _errorMessage != null
-                      ? _buildErrorState()
-                      : _activeBuses.isEmpty
-                          ? _buildEmptyState()
-                          : filteredBuses.isEmpty
-                              ? _buildEmptyFilteredState()
-                              : ListView.builder(
-                                  padding: const EdgeInsets.all(16.0),
-                                  itemCount: filteredBuses.length,
-                                  itemBuilder: (context, index) {
-                                    final bus = filteredBuses[index];
-                                    final int maxCap = bus['max_capacity'] ?? 40;
-                                    final int boarded = bus['passengers_boarded'] ?? 0;
-                                    final int remaining = bus['capacity_remaining'] ?? (maxCap - boarded);
-                                    final double ratio = maxCap > 0 ? (boarded / maxCap) : 0.0;
-                                    final String routeId = bus['route_id'] ?? '';
-                                    final String routeName = bus['route_name'] ?? 'Unknown Route';
-                                    final String vehicleNo = bus['vehicle_no'] ?? 'Unknown';
-                                    final String start = bus['start_location'] ?? '';
-                                    final String end = bus['end_location'] ?? '';
-                                    final String via = bus['via'] ?? '';
-                                    final String departureTime = bus['departure_time'] ?? '';
+                  : _errorMessage != null && _activeBuses.isEmpty
+                  ? _buildErrorState()
+                  : _activeBuses.isEmpty
+                  ? _buildEmptyState()
+                  : filteredBuses.isEmpty
+                  ? _buildEmptyFilteredState()
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16.0),
+                      itemCount: filteredBuses.length,
+                      itemBuilder: (context, index) {
+                        final bus = filteredBuses[index];
+                        final int maxCap = bus['max_capacity'] ?? 40;
+                        final int boarded = bus['passengers_boarded'] ?? 0;
+                        final int remaining =
+                            bus['capacity_remaining'] ?? (maxCap - boarded);
+                        final double ratio = maxCap > 0
+                            ? (boarded / maxCap)
+                            : 0.0;
+                        final String routeId = bus['route_id'] ?? '';
+                        final String routeName =
+                            bus['route_name'] ?? 'Unknown Route';
+                        final String vehicleNo = bus['vehicle_no'] ?? 'Unknown';
+                        final String start = bus['start_location'] ?? '';
+                        final String end = bus['end_location'] ?? '';
+                        final String via = bus['via'] ?? '';
+                        final String departureTime =
+                            bus['departure_time'] ?? '';
 
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 16.0),
-                                      decoration: CommutasShapes.cardDecoration,
-                                      clipBehavior: Clip.hardEdge,
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16.0),
+                          decoration: CommutasShapes.cardDecoration,
+                          clipBehavior: Clip.hardEdge,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 12.0,
+                                ),
+                                color: CommutasColors.primaryNavy,
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          // Header
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                                            color: CommutasColors.primaryNavy,
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        vehicleNo,
-                                                        style: CommutasTextStyles.heading2.copyWith(
-                                                          color: Colors.white,
-                                                          fontSize: 15,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        routeId.toUpperCase(),
-                                                        style: CommutasTextStyles.bodySmall.copyWith(
-                                                          color: Colors.white70,
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
+                                          Text(
+                                            vehicleNo,
+                                            style: CommutasTextStyles.heading2
+                                                .copyWith(
+                                                  color: Colors.white,
+                                                  fontSize: 15,
                                                 ),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: CommutasColors.emeraldGreen.withOpacity(0.2),
-                                                    border: Border.all(color: CommutasColors.emeraldGreen, width: 1.5),
-                                                  ),
-                                                  child: Text(
-                                                    'IN TRANSIT',
-                                                    style: CommutasTextStyles.labelCaption.copyWith(
-                                                      color: Colors.white,
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
                                           ),
-
-                                          // Body
-                                          Padding(
-                                            padding: const EdgeInsets.all(16.0),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                 // Seat Availability indicator
-                                                 Row(
-                                                   children: [
-                                                     const Icon(
-                                                       Icons.event_seat_rounded,
-                                                       size: 18,
-                                                       color: CommutasColors.primaryNavy,
-                                                     ),
-                                                     const SizedBox(width: 8),
-                                                     Text(
-                                                       '$remaining Seats Free',
-                                                       style: CommutasTextStyles.bodyMedium.copyWith(
-                                                         color: CommutasColors.primaryNavy,
-                                                         fontWeight: FontWeight.bold,
-                                                       ),
-                                                     ),
-                                                   ],
-                                                 ),
-                                                 const SizedBox(height: 16),
-
-                                                // Bottom Info Row: Departure Time & Occupancy Text
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Row(
-                                                      children: [
-                                                        const Icon(Icons.access_time_filled, size: 16, color: CommutasColors.slateMuted),
-                                                        const SizedBox(width: 6),
-                                                        Text(
-                                                          departureTime,
-                                                          style: CommutasTextStyles.bodyMedium.copyWith(
-                                                            color: CommutasColors.primaryNavy,
-                                                            fontWeight: FontWeight.bold,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Text(
-                                                      '$boarded / $maxCap Boarded',
-                                                      style: CommutasTextStyles.bodyMedium.copyWith(
-                                                        fontWeight: FontWeight.bold,
-                                                        color: _getOccupancyColor(ratio),
-                                                      ),
-                                                    ),
-                                                  ],
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            routeId.toUpperCase(),
+                                            style: CommutasTextStyles.bodySmall
+                                                .copyWith(
+                                                  color: Colors.white70,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
-                                                const SizedBox(height: 8),
-
-                                                // Occupancy Progress Indicator
-                                                ClipRRect(
-                                                  child: LinearProgressIndicator(
-                                                    value: ratio,
-                                                    minHeight: 6,
-                                                    backgroundColor: CommutasColors.lineBorder,
-                                                    valueColor: AlwaysStoppedAnimation<Color>(_getOccupancyColor(ratio)),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 16),
-
-                                                // Track Bus CTA Button
-                                                SizedBox(
-                                                  width: double.infinity,
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (context) => ActiveBusMapScreen(
-                                                            routeId: routeId,
-                                                            routeName: routeName,
-                                                            vehicleNo: vehicleNo,
-                                                            initialLatitude: bus['latitude'] != null ? (bus['latitude'] as num).toDouble() : null,
-                                                            initialLongitude: bus['longitude'] != null ? (bus['longitude'] as num).toDouble() : null,
-                                                            maxCapacity: maxCap,
-                                                            passengersBoarded: boarded,
-                                                            startLocation: start,
-                                                            endLocation: end,
-                                                            via: via,
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(Icons.map_rounded, color: Colors.white, size: 18),
-                                                    label: Text(
-                                                      'LIVE MAP TRACKING',
-                                                      style: CommutasTextStyles.buttonLabel.copyWith(letterSpacing: 0.5),
-                                                    ),
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: CommutasColors.primaryNavy,
-                                                      foregroundColor: Colors.white,
-                                                      elevation: 0,
-                                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
                                           ),
                                         ],
                                       ),
-                                    );
-                                  },
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: CommutasColors.emeraldGreen
+                                            .withOpacity(0.2),
+                                        border: Border.all(
+                                          color: CommutasColors.emeraldGreen,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'IN TRANSIT',
+                                        style: CommutasTextStyles.labelCaption
+                                            .copyWith(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+
+                              // Body
+                              Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Seat Availability indicator
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.event_seat_rounded,
+                                          size: 18,
+                                          color: CommutasColors.primaryNavy,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '$remaining Seats Free',
+                                          style: CommutasTextStyles.bodyMedium
+                                              .copyWith(
+                                                color:
+                                                    CommutasColors.primaryNavy,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+
+                                    // Bottom Info Row: Departure Time & Occupancy Text
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.access_time_filled,
+                                              size: 16,
+                                              color: CommutasColors.slateMuted,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              departureTime,
+                                              style: CommutasTextStyles
+                                                  .bodyMedium
+                                                  .copyWith(
+                                                    color: CommutasColors
+                                                        .primaryNavy,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          '$boarded / $maxCap Boarded',
+                                          style: CommutasTextStyles.bodyMedium
+                                              .copyWith(
+                                                fontWeight: FontWeight.bold,
+                                                color: _getOccupancyColor(
+                                                  ratio,
+                                                ),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+
+                                    // Occupancy Progress Indicator
+                                    ClipRRect(
+                                      child: LinearProgressIndicator(
+                                        value: ratio,
+                                        minHeight: 6,
+                                        backgroundColor:
+                                            CommutasColors.lineBorder,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              _getOccupancyColor(ratio),
+                                            ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+
+                                    // Track Bus CTA Button
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  ActiveBusMapScreen(
+                                                    routeId: routeId,
+                                                    routeName: routeName,
+                                                    vehicleNo: vehicleNo,
+                                                    initialLatitude:
+                                                        bus['latitude'] != null
+                                                        ? (bus['latitude']
+                                                                  as num)
+                                                              .toDouble()
+                                                        : null,
+                                                    initialLongitude:
+                                                        bus['longitude'] != null
+                                                        ? (bus['longitude']
+                                                                  as num)
+                                                              .toDouble()
+                                                        : null,
+                                                    maxCapacity: maxCap,
+                                                    passengersBoarded: boarded,
+                                                    startLocation: start,
+                                                    endLocation: end,
+                                                    via: via,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                        icon: const Icon(
+                                          Icons.map_rounded,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                        label: Text(
+                                          'LIVE MAP TRACKING',
+                                          style: CommutasTextStyles.buttonLabel
+                                              .copyWith(letterSpacing: 0.5),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              CommutasColors.primaryNavy,
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                          shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.zero,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
             ),
           ),
         ],

@@ -6,10 +6,12 @@ import 'api_interceptor.dart';
 import 'auth_service.dart';
 
 class WalletService {
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: AuthService.serverAddress,
-    headers: {'Content-Type': 'application/json'},
-  ))..interceptors.add(ApiInterceptor());
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: AuthService.serverAddress,
+      headers: {'Content-Type': 'application/json'},
+    ),
+  )..interceptors.add(ApiInterceptor());
 
   /// Initiate a wallet top-up. Returns {transaction_id, checkout_url}.
   Future<Map<String, dynamic>?> initiateTopUp({
@@ -17,10 +19,10 @@ class WalletService {
     required double amount,
   }) async {
     try {
-      final response = await _dio.post('/api/wallet/topup', data: {
-        'user_id': regNo,
-        'amount': amount,
-      });
+      final response = await _dio.post(
+        '/api/wallet/topup',
+        data: {'user_id': regNo, 'amount': amount},
+      );
 
       if (response.statusCode == 201) {
         return response.data;
@@ -39,22 +41,30 @@ class WalletService {
   Future<bool> trackPendingTransaction(String txId, double amount) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final List<String> list = prefs.getStringList('tracked_pending_txs') ?? [];
+      final List<String> list =
+          prefs.getStringList('tracked_pending_txs') ?? [];
       list.add('$txId:${amount.toStringAsFixed(0)}');
       await prefs.setStringList('tracked_pending_txs', list);
       return true;
     } catch (e) {
-      developer.log('Error tracking pending transaction: $e', name: 'WalletService');
+      developer.log(
+        'Error tracking pending transaction: $e',
+        name: 'WalletService',
+      );
       return false;
     }
   }
 
   /// Check if tracked pending transactions have transitioned to SUCCESS or FAILED.
   /// If they have, show a sliding overlay notification and return true.
-  Future<bool> checkPendingTransactions(String token, BuildContext context) async {
+  Future<bool> checkPendingTransactions(
+    String token,
+    BuildContext context,
+  ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final List<String> list = prefs.getStringList('tracked_pending_txs') ?? [];
+      final List<String> list =
+          prefs.getStringList('tracked_pending_txs') ?? [];
       if (list.isEmpty) return false;
 
       // Fetch latest transaction history
@@ -93,13 +103,17 @@ class WalletService {
       }
       return stateChanged;
     } catch (e) {
-      developer.log('Error checking pending transactions: $e', name: 'WalletService');
+      developer.log(
+        'Error checking pending transactions: $e',
+        name: 'WalletService',
+      );
       return false;
     }
   }
 
   /// Fetch the current wallet balance. Requires JWT token.
-  /// Returns the balance as a double, defaults to 0.0 on error.
+  /// Throws when the request is not successfully completed so callers can
+  /// distinguish an unavailable balance from a genuine zero balance.
   Future<double> fetchWalletBalance({required String token}) async {
     try {
       final response = await _dio.get(
@@ -107,16 +121,17 @@ class WalletService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        return (response.data['balance'] as num).toDouble();
+      if (response.statusCode == 200 && response.data is Map) {
+        final balance = response.data['balance'];
+        if (balance is num) return balance.toDouble();
       }
-      return 0.0;
+      throw const FormatException('Wallet balance response was unavailable.');
     } on DioException catch (e) {
       developer.log(
         'Fetch Balance Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'WalletService',
       );
-      return 0.0;
+      rethrow;
     }
   }
 
@@ -134,16 +149,20 @@ class WalletService {
 
       if (response.statusCode == 200 && response.data is List) {
         return List<Map<String, dynamic>>.from(
-          (response.data as List).map((item) => Map<String, dynamic>.from(item)),
+          (response.data as List).map(
+            (item) => Map<String, dynamic>.from(item),
+          ),
         );
       }
-      return [];
+      throw const FormatException(
+        'Transaction history response was unavailable.',
+      );
     } on DioException catch (e) {
       developer.log(
         'Fetch Transactions Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'WalletService',
       );
-      return [];
+      rethrow;
     }
   }
 }
