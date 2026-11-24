@@ -56,4 +56,5 @@ windows/
 # Release signing
 *.jks
 *.keystore
-android/key.properties
+android/key.properties
+android/keystore-base64.txt
