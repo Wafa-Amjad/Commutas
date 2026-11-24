@@ -10,7 +10,9 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
 import '../services/auth_service.dart';
+import '../services/friendly_error_message.dart';
 import '../../theme.dart';
+import 'vehicle_error_snackbar.dart';
 
 /// Vehicle Session Dashboard — embedded in the bottom nav (no AppBar back button).
 ///
@@ -42,7 +44,8 @@ class VehicleSessionScreen extends StatefulWidget {
   State<VehicleSessionScreen> createState() => _VehicleSessionScreenState();
 }
 
-class _VehicleSessionScreenState extends State<VehicleSessionScreen> with TickerProviderStateMixin {
+class _VehicleSessionScreenState extends State<VehicleSessionScreen>
+    with TickerProviderStateMixin {
   final AuthService _authService = AuthService();
   late final AnimationController _pulseController;
   final MapController _flutterMapController = MapController();
@@ -51,7 +54,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   late String _sessionId;
   String _status = 'BOARDING'; // BOARDING, TRANSIT, COMPLETED
   bool _isLoading = false;
-  String? _errorMsg;
 
   // Boarding state
   final List<Map<String, dynamic>> _boardedStudents = [];
@@ -62,6 +64,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   // Transit state (GPS & WebSocket)
   WebSocketChannel? _wsChannel;
   Timer? _gpsTimer;
+  Timer? _reconnectTimer;
+  bool _isConnectingWebSocket = false;
+  bool _connectionNoticeShown = false;
+  bool _isSessionClosing = false;
   Position? _currentPosition;
   String _gpsStatus = 'GPS Idle';
 
@@ -86,11 +92,48 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
     });
   }
 
+  void _showVehicleError(String message, {VoidCallback? onRetry}) {
+    if (!mounted) return;
+    showVehicleErrorSnackBar(context, message, onRetry: onRetry);
+  }
+
+  void _hideVehicleError() {
+    if (!mounted) return;
+    hideVehicleErrorSnackBar(context);
+  }
+
+  void _showConnectionIssue(String message, Duration retryDelay) {
+    if (!mounted || _status != 'TRANSIT' || _isSessionClosing) return;
+
+    setState(() => _gpsStatus = message);
+    if (!_connectionNoticeShown) {
+      _connectionNoticeShown = true;
+      _showVehicleError(message);
+    }
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(retryDelay, () {
+      _reconnectTimer = null;
+      if (mounted && _status == 'TRANSIT' && !_isSessionClosing)
+        _connectWebSocket();
+    });
+  }
+
+  void _handleConnectionRestored() {
+    _connectionNoticeShown = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (!mounted) return;
+
+    _hideVehicleError();
+    setState(() => _gpsStatus = 'Connected to server');
+  }
+
   @override
   void initState() {
     super.initState();
     _sessionId = widget.sessionId;
-    
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -103,7 +146,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   Future<void> _fetchSessionDetails() async {
     setState(() {
       _isLoading = true;
-      _errorMsg = null;
     });
 
     try {
@@ -127,6 +169,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             _startLocationBroadcasting();
           } else if (serverStatus == 'completed') {
             _status = 'COMPLETED';
+            _isSessionClosing = true;
+            _reconnectTimer?.cancel();
+            _closeWebSocket();
+            _hideVehicleError();
           } else {
             _status = 'BOARDING';
           }
@@ -146,10 +192,15 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         setState(() => _isLoading = false);
       }
     } catch (e) {
+      final message = friendlyErrorMessage(
+        e,
+        fallback:
+            'Session details are currently unavailable. Please try again shortly.',
+      );
       setState(() {
-        _errorMsg = 'Failed to load session details: $e';
         _isLoading = false;
       });
+      _showVehicleError(message, onRetry: _fetchSessionDetails);
     }
   }
 
@@ -157,7 +208,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   void dispose() {
     _pulseController.dispose();
     _gpsTimer?.cancel();
+    _reconnectTimer?.cancel();
     _feedbackTimer?.cancel();
+    hideVehicleErrorSnackBar(context);
     _closeWebSocket();
     _stopNfcReader();
     super.dispose();
@@ -168,8 +221,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
     try {
       bool isAvailable = await NfcManager.instance.isAvailable();
       if (!isAvailable) {
+        const message =
+            'NFC is not supported on this device. Please use the QR code instead.';
         setState(() {
-          _nfcStatus = 'NFC Hardware unavailable. Use manual/QR scan fallback.';
+          _nfcStatus = message;
         });
         return;
       }
@@ -180,7 +235,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
 
       await NfcManager.instance.startSession(
         onDiscovered: (NfcTag tag) async {
-          if (_isProcessingNfc || (_status != 'BOARDING' && _status != 'TRANSIT')) return;
+          if (_isProcessingNfc ||
+              (_status != 'BOARDING' && _status != 'TRANSIT'))
+            return;
 
           setState(() {
             _isProcessingNfc = true;
@@ -206,16 +263,20 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
           if (parsedPayload.isNotEmpty) {
             await _validateStudentFare(parsedPayload);
           } else {
+            const message =
+                'No valid NFC ticket was detected. Please try again.';
             setState(() {
               _isProcessingNfc = false;
-              _nfcStatus = 'Empty/Invalid NFC scan. Try again.';
+              _nfcStatus = message;
             });
           }
         },
       );
     } catch (e) {
+      const message =
+          'NFC is not supported on this device. Please use the QR code instead.';
       setState(() {
-        _nfcStatus = 'NFC initialization failed: $e';
+        _nfcStatus = message;
       });
     }
   }
@@ -266,7 +327,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   // ─── FARE COLLECTION ──────────────────────────────────────────────────
   Future<void> _validateStudentFare(String tokenId) async {
     // 1. Client-side format check (UUIDv4 validation)
-    final uuidRegex = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+    final uuidRegex = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
     if (!uuidRegex.hasMatch(tokenId)) {
       setState(() {
         _nfcStatus = 'Invalid scan payload';
@@ -312,10 +375,13 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         _showFeedback('DENIED', 'Invalid Ticket or Insufficient Balance');
       }
     } catch (e) {
+      final message = friendlyErrorMessage(
+        e,
+        fallback: 'Ticket validation could not be completed. Please try again.',
+      );
       setState(() {
-        _nfcStatus = 'Validation error: $e';
+        _nfcStatus = message;
       });
-      _showFeedback('DENIED', 'Server validation failed');
     } finally {
       setState(() => _isProcessingNfc = false);
       // Cooldown then re-ready
@@ -342,7 +408,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   Future<void> _departTrip() async {
     setState(() {
       _isLoading = true;
-      _errorMsg = null;
     });
 
     try {
@@ -365,16 +430,30 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         throw Exception('Server rejected departure request.');
       }
     } catch (e) {
+      final message = friendlyErrorMessage(
+        e,
+        fallback: 'The trip could not be started. Please try again.',
+      );
       setState(() {
-        _errorMsg = e.toString().replaceAll('Exception:', '').trim();
         _isLoading = false;
       });
+      _showVehicleError(message, onRetry: _departTrip);
     }
   }
 
   // ─── GPS & WEBSOCKET ──────────────────────────────────────────────────
   void _connectWebSocket() async {
+    if (!mounted ||
+        _status != 'TRANSIT' ||
+        _isConnectingWebSocket ||
+        _isSessionClosing)
+      return;
+
+    _isConnectingWebSocket = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _closeWebSocket();
+
     try {
       var serverUrl = AuthService.serverAddress
           .replaceAll('https://', 'wss://')
@@ -386,42 +465,49 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       debugPrint('[VehicleSession] Connecting WebSocket to: $wsUrl');
 
       // Use web_socket_channel for cross-platform WebSocket support
-      _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      await _wsChannel!.ready;
+      final channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      _wsChannel = channel;
+      await channel.ready;
+
+      if (!mounted || _status != 'TRANSIT' || !identical(_wsChannel, channel)) {
+        await channel.sink.close(ws_status.goingAway);
+        return;
+      }
 
       debugPrint('[VehicleSession] WebSocket connected.');
-      if (mounted) setState(() => _gpsStatus = 'Connected to server');
+      _handleConnectionRestored();
 
       // Listen for server-side closure so we can auto-reconnect
-      _wsChannel!.stream.listen(
+      channel.stream.listen(
         (_) {}, // Vehicle doesn't receive data, only sends
         onDone: () {
           debugPrint('[VehicleSession] WebSocket closed by server.');
-          if (mounted && _status == 'TRANSIT') {
-            setState(() => _gpsStatus = 'Server disconnected. Reconnecting...');
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted && _status == 'TRANSIT') _connectWebSocket();
-            });
+          if (identical(_wsChannel, channel)) {
+            _showConnectionIssue(
+              'Connection lost. Reconnecting...',
+              const Duration(seconds: 3),
+            );
           }
         },
         onError: (e) {
           debugPrint('[VehicleSession] WebSocket error: $e');
-          if (mounted && _status == 'TRANSIT') {
-            setState(() => _gpsStatus = 'Connection error. Reconnecting...');
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted && _status == 'TRANSIT') _connectWebSocket();
-            });
+          if (identical(_wsChannel, channel)) {
+            _showConnectionIssue(
+              'Connection interrupted. Reconnecting...',
+              const Duration(seconds: 3),
+            );
           }
         },
       );
     } catch (e) {
       debugPrint('[VehicleSession] WebSocket connection failed: $e');
-      if (mounted) {
-        setState(() => _gpsStatus = 'Server connection failed. Retrying...');
-      }
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && _status == 'TRANSIT') _connectWebSocket();
-      });
+      _closeWebSocket();
+      _showConnectionIssue(
+        'Connection unavailable. Retrying...',
+        const Duration(seconds: 5),
+      );
+    } finally {
+      _isConnectingWebSocket = false;
     }
   }
 
@@ -448,7 +534,12 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        if (mounted) setState(() => _gpsStatus = 'Location services are disabled');
+        if (mounted) {
+          const message =
+              'Location services are disabled. Enable them to share vehicle location.';
+          setState(() => _gpsStatus = message);
+          _showVehicleError(message);
+        }
         return;
       }
 
@@ -456,7 +547,12 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          if (mounted) setState(() => _gpsStatus = 'Location permission denied');
+          if (mounted) {
+            const message =
+                'Location permission is required to share vehicle location.';
+            setState(() => _gpsStatus = message);
+            _showVehicleError(message);
+          }
           return;
         }
       }
@@ -465,27 +561,29 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         accuracy: LocationAccuracy.high,
         timeLimit: Duration(seconds: 8),
       );
-      Position pos = await Geolocator.getCurrentPosition(locationSettings: locationSettings);
+      Position pos = await Geolocator.getCurrentPosition(
+        locationSettings: locationSettings,
+      );
 
       if (mounted) {
         setState(() {
           _currentPosition = pos;
-          _gpsStatus = 'Broadcasting: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+          _gpsStatus =
+              'Broadcasting: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
         });
 
         try {
-          _flutterMapController.move(
-            LatLng(pos.latitude, pos.longitude),
-            15.0,
-          );
+          _flutterMapController.move(LatLng(pos.latitude, pos.longitude), 15.0);
         } catch (_) {}
 
         if (_wsChannel != null) {
           try {
-            _wsChannel!.sink.add(jsonEncode({
-              'latitude': pos.latitude,
-              'longitude': pos.longitude,
-            }));
+            _wsChannel!.sink.add(
+              jsonEncode({
+                'latitude': pos.latitude,
+                'longitude': pos.longitude,
+              }),
+            );
           } catch (e) {
             debugPrint('[VehicleSession] Failed to send GPS via WebSocket: $e');
           }
@@ -493,7 +591,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _gpsStatus = 'Broadcasting failed: $e');
+        const message =
+            'Vehicle location could not be updated. Check location permissions and try again.';
+        setState(() => _gpsStatus = message);
+        _showVehicleError(message);
       }
     }
   }
@@ -506,16 +607,30 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: const Text('End Trip?', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('This will stop location broadcasting and complete the session. This action cannot be undone.'),
+        title: const Text(
+          'End Trip?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will stop location broadcasting and complete the session. This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('CANCEL', style: TextStyle(color: CommutasColors.slateMuted)),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(color: CommutasColors.slateMuted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('END TRIP', style: TextStyle(color: CommutasColors.danger, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'END TRIP',
+              style: TextStyle(
+                color: CommutasColors.danger,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -523,18 +638,25 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
 
     if (confirmed != true) return;
 
+    // Stop late socket/reconnect callbacks from posting a connection message
+    // while the completed-session request is in progress.
+    _isSessionClosing = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _hideVehicleError();
+
     setState(() => _isLoading = true);
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('session_token') ?? '';
 
-      await _authService.endVehicleTrip(
-        token: token,
-        sessionId: _sessionId,
-      );
+      await _authService.endVehicleTrip(token: token, sessionId: _sessionId);
 
       _gpsTimer?.cancel();
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _connectionNoticeShown = false;
       _closeWebSocket();
 
       setState(() {
@@ -542,10 +664,15 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
         _isLoading = false;
       });
     } catch (e) {
+      _isSessionClosing = false;
+      final message = friendlyErrorMessage(
+        e,
+        fallback: 'The trip could not be completed. Please try again.',
+      );
       setState(() {
-        _errorMsg = e.toString().replaceAll('Exception:', '').trim();
         _isLoading = false;
       });
+      _showVehicleError(message, onRetry: _endTrip);
     }
   }
 
@@ -560,23 +687,24 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             _isLoading
                 ? const Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        CommutasColors.primaryNavy,
+                      ),
                     ),
                   )
                 : _status == 'COMPLETED'
-                    ? _buildCompletedView()
-                    : Column(
-                        children: [
-                          _buildSessionHeader(),
-                          Expanded(
-                            child: _status == 'BOARDING'
-                                ? _buildBoardingView()
-                                : _buildTransitView(),
-                          ),
-                          if (_errorMsg != null) _buildErrorBanner(),
-                          _buildBottomAction(),
-                        ],
+                ? _buildCompletedView()
+                : Column(
+                    children: [
+                      _buildSessionHeader(),
+                      Expanded(
+                        child: _status == 'BOARDING'
+                            ? _buildBoardingView()
+                            : _buildTransitView(),
                       ),
+                      _buildBottomAction(),
+                    ],
+                  ),
             if (_feedbackType != null)
               Positioned.fill(
                 child: Container(
@@ -587,10 +715,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeOutBack,
                       builder: (context, scale, child) {
-                        return Transform.scale(
-                          scale: scale,
-                          child: child,
-                        );
+                        return Transform.scale(scale: scale, child: child);
                       },
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 40),
@@ -676,9 +801,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                           child: Stack(
                             children: [
                               Positioned.fill(
-                                child: Container(
-                                  color: Colors.black,
-                                ),
+                                child: Container(color: Colors.black),
                               ),
                               Center(
                                 child: Container(
@@ -700,7 +823,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                           width: 240,
                           height: 240,
                           decoration: BoxDecoration(
-                            border: Border.all(color: CommutasColors.emeraldGreen, width: 3),
+                            border: Border.all(
+                              color: CommutasColors.emeraldGreen,
+                              width: 3,
+                            ),
                           ),
                         ),
                       ),
@@ -710,7 +836,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                         left: 20,
                         right: 20,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           color: Colors.black.withValues(alpha: 0.6),
                           child: const Text(
                             'Scan student QR boarding ticket to collect fare',
@@ -739,7 +868,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                             backgroundColor: Colors.white,
                             foregroundColor: CommutasColors.primaryNavy,
                             minimumSize: const Size(double.infinity, 50),
-                            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero,
+                            ),
                             elevation: 0,
                           ),
                           child: const Text(
@@ -773,12 +904,19 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                color: isBoarding ? CommutasColors.lightGreenBg : CommutasColors.lightBlueBg,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                color: isBoarding
+                    ? CommutasColors.lightGreenBg
+                    : CommutasColors.lightBlueBg,
                 child: Text(
                   isBoarding ? 'BOARDING ACTIVE' : 'IN TRANSIT',
                   style: TextStyle(
-                    color: isBoarding ? CommutasColors.emeraldGreen : CommutasColors.accentCobalt,
+                    color: isBoarding
+                        ? CommutasColors.emeraldGreen
+                        : CommutasColors.accentCobalt,
                     fontWeight: FontWeight.bold,
                     fontSize: 10,
                     letterSpacing: 0.5,
@@ -787,28 +925,47 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
               ),
               Text(
                 widget.timing,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: CommutasColors.primaryNavy),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: CommutasColors.primaryNavy,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             widget.routeName,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: CommutasColors.primaryNavy,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             widget.routePath,
-            style: const TextStyle(fontSize: 11, color: CommutasColors.slateMuted),
+            style: const TextStyle(
+              fontSize: 11,
+              color: CommutasColors.slateMuted,
+            ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.people_rounded, size: 14, color: CommutasColors.slateMuted),
+              const Icon(
+                Icons.people_rounded,
+                size: 14,
+                color: CommutasColors.slateMuted,
+              ),
               const SizedBox(width: 4),
               Text(
                 '${_boardedStudents.length} boarded',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: CommutasColors.primaryNavy,
+                ),
               ),
             ],
           ),
@@ -829,11 +986,18 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             children: [
               Text(
                 'BOARDED PASSENGERS',
-                style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, color: CommutasColors.slateMuted),
+                style: CommutasTextStyles.labelBold.copyWith(
+                  fontSize: 10,
+                  color: CommutasColors.slateMuted,
+                ),
               ),
               Text(
                 '${_boardedStudents.length}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: CommutasColors.primaryNavy),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  color: CommutasColors.primaryNavy,
+                ),
               ),
             ],
           ),
@@ -847,17 +1011,30 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.people_outline_rounded, color: CommutasColors.slateMuted.withValues(alpha: 0.4), size: 36),
+                          Icon(
+                            Icons.people_outline_rounded,
+                            color: CommutasColors.slateMuted.withValues(
+                              alpha: 0.4,
+                            ),
+                            size: 36,
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             'Awaiting student taps...',
-                            style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                            style: CommutasTextStyles.bodySmall.copyWith(
+                              color: CommutasColors.slateMuted,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Students must hold their phone near this device',
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 10, color: CommutasColors.slateMuted.withValues(alpha: 0.6)),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: CommutasColors.slateMuted.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -870,10 +1047,14 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                   itemBuilder: (ctx, idx) {
                     final item = _boardedStudents[idx];
                     final t = item['time'] as DateTime;
-                    final timeStr = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
+                    final timeStr =
+                        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: CommutasColors.lineBorder),
@@ -883,7 +1064,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                           Container(
                             padding: const EdgeInsets.all(6),
                             color: CommutasColors.lightGreenBg,
-                            child: const Icon(Icons.check_rounded, color: CommutasColors.emeraldGreen, size: 16),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: CommutasColors.emeraldGreen,
+                              size: 16,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -892,20 +1077,32 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                               children: [
                                 Text(
                                   item['name'] ?? 'Student',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: CommutasColors.primaryNavy),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: CommutasColors.primaryNavy,
+                                  ),
                                 ),
                                 Text(
                                   '${item['regNo'] ?? 'Verified'} • ID: ${item['tokenId'].toString().substring(0, 8)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 9, color: CommutasColors.slateMuted, fontFamily: 'monospace'),
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: CommutasColors.slateMuted,
+                                    fontFamily: 'monospace',
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           Text(
                             timeStr,
-                            style: const TextStyle(fontSize: 10, color: CommutasColors.slateMuted, fontFamily: 'monospace'),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: CommutasColors.slateMuted,
+                              fontFamily: 'monospace',
+                            ),
                           ),
                         ],
                       ),
@@ -939,9 +1136,13 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                         width: 54,
                         height: 54,
                         decoration: BoxDecoration(
-                          color: CommutasColors.emeraldGreen.withValues(alpha: 0.12 * (1.0 - _pulseController.value)),
+                          color: CommutasColors.emeraldGreen.withValues(
+                            alpha: 0.12 * (1.0 - _pulseController.value),
+                          ),
                           border: Border.all(
-                            color: CommutasColors.emeraldGreen.withValues(alpha: 0.25 * (1.0 - _pulseController.value)),
+                            color: CommutasColors.emeraldGreen.withValues(
+                              alpha: 0.25 * (1.0 - _pulseController.value),
+                            ),
                             width: 1.5,
                           ),
                         ),
@@ -960,7 +1161,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                               strokeWidth: 2,
                             ),
                           )
-                        : const Icon(Icons.nfc_rounded, color: Colors.white, size: 20),
+                        : const Icon(
+                            Icons.nfc_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                   ),
                 ],
               ),
@@ -971,7 +1176,12 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                   children: [
                     const Text(
                       'NFC FARE READER',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy, letterSpacing: 0.5),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: CommutasColors.primaryNavy,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -979,7 +1189,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: _nfcStatus.contains('DENIED') || _nfcStatus.contains('error')
+                        color:
+                            _nfcStatus.contains('DENIED') ||
+                                _nfcStatus.contains('error')
                             ? CommutasColors.danger
                             : CommutasColors.emeraldGreen,
                         fontWeight: FontWeight.w600,
@@ -1004,13 +1216,19 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
             label: const Text(
               'SCAN STUDENT QR TICKET',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: CommutasColors.primaryNavy,
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 44),
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              ),
               elevation: 0,
             ),
           ),
@@ -1041,12 +1259,16 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            CommutasColors.primaryNavy,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           'Awaiting live GPS coordinates...',
-                          style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                          style: CommutasTextStyles.bodySmall.copyWith(
+                            color: CommutasColors.slateMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -1062,7 +1284,8 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'pk.edu.comsats.commutas',
                       ),
                       MarkerLayer(
@@ -1113,9 +1336,14 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                               width: 48,
                               height: 48,
                               decoration: BoxDecoration(
-                                color: CommutasColors.accentCobalt.withValues(alpha: 0.08 * (1.0 - _pulseController.value)),
+                                color: CommutasColors.accentCobalt.withValues(
+                                  alpha: 0.08 * (1.0 - _pulseController.value),
+                                ),
                                 border: Border.all(
-                                  color: CommutasColors.accentCobalt.withValues(alpha: 0.20 * (1.0 - _pulseController.value)),
+                                  color: CommutasColors.accentCobalt.withValues(
+                                    alpha:
+                                        0.20 * (1.0 - _pulseController.value),
+                                  ),
                                   width: 1.5,
                                 ),
                               ),
@@ -1126,7 +1354,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                           width: 32,
                           height: 32,
                           color: CommutasColors.primaryNavy,
-                          child: const Icon(Icons.radar_rounded, color: Colors.white, size: 18),
+                          child: const Icon(
+                            Icons.radar_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
                       ],
                     ),
@@ -1137,12 +1369,21 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                         children: [
                           const Text(
                             'LIVE LOCATION BROADCAST',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy, letterSpacing: 0.5),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: CommutasColors.primaryNavy,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             _gpsStatus,
-                            style: const TextStyle(fontSize: 11, color: CommutasColors.emeraldGreen, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: CommutasColors.emeraldGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -1156,11 +1397,17 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                   Row(
                     children: [
                       Expanded(
-                        child: _buildCoordTile('LATITUDE', _currentPosition!.latitude.toStringAsFixed(6)),
+                        child: _buildCoordTile(
+                          'LATITUDE',
+                          _currentPosition!.latitude.toStringAsFixed(6),
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: _buildCoordTile('LONGITUDE', _currentPosition!.longitude.toStringAsFixed(6)),
+                        child: _buildCoordTile(
+                          'LONGITUDE',
+                          _currentPosition!.longitude.toStringAsFixed(6),
+                        ),
                       ),
                     ],
                   ),
@@ -1183,14 +1430,29 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
               children: [
                 Text(
                   'TRIP SUMMARY',
-                  style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, color: CommutasColors.slateMuted),
+                  style: CommutasTextStyles.labelBold.copyWith(
+                    fontSize: 10,
+                    color: CommutasColors.slateMuted,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                _buildSummaryRow(Icons.people_rounded, 'Passengers Boarded', '${_boardedStudents.length}'),
+                _buildSummaryRow(
+                  Icons.people_rounded,
+                  'Passengers Boarded',
+                  '${_boardedStudents.length}',
+                ),
                 const SizedBox(height: 8),
-                _buildSummaryRow(Icons.account_balance_wallet_rounded, 'Fares Collected', 'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}'),
+                _buildSummaryRow(
+                  Icons.account_balance_wallet_rounded,
+                  'Fares Collected',
+                  'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}',
+                ),
                 const SizedBox(height: 8),
-                _buildSummaryRow(Icons.route_rounded, 'Route', widget.routeName),
+                _buildSummaryRow(
+                  Icons.route_rounded,
+                  'Route',
+                  widget.routeName,
+                ),
               ],
             ),
           ),
@@ -1203,9 +1465,25 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: CommutasColors.slateMuted, letterSpacing: 0.5)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.bold,
+            color: CommutasColors.slateMuted,
+            letterSpacing: 0.5,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy, fontFamily: 'monospace')),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: CommutasColors.primaryNavy,
+            fontFamily: 'monospace',
+          ),
+        ),
       ],
     );
   }
@@ -1215,7 +1493,13 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
       children: [
         Icon(icon, size: 14, color: CommutasColors.slateMuted),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 11, color: CommutasColors.slateMuted)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: CommutasColors.slateMuted,
+          ),
+        ),
         const SizedBox(width: 16),
         Expanded(
           child: Text(
@@ -1223,7 +1507,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             textAlign: TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: CommutasColors.primaryNavy),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: CommutasColors.primaryNavy,
+            ),
           ),
         ),
       ],
@@ -1241,14 +1529,23 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
             Container(
               padding: const EdgeInsets.all(20),
               color: CommutasColors.lightGreenBg,
-              child: const Icon(Icons.check_circle_rounded, color: CommutasColors.emeraldGreen, size: 48),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: CommutasColors.emeraldGreen,
+                size: 48,
+              ),
             ),
             const SizedBox(height: 24),
-            Text('TRIP COMPLETED', style: CommutasTextStyles.heading2.copyWith(letterSpacing: 1)),
+            Text(
+              'TRIP COMPLETED',
+              style: CommutasTextStyles.heading2.copyWith(letterSpacing: 1),
+            ),
             const SizedBox(height: 8),
             Text(
               widget.routeName,
-              style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.bodyMedium.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
             ),
             const SizedBox(height: 24),
 
@@ -1262,11 +1559,23 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
               ),
               child: Column(
                 children: [
-                  _buildSummaryRow(Icons.people_rounded, 'Total Passengers', '${_boardedStudents.length}'),
+                  _buildSummaryRow(
+                    Icons.people_rounded,
+                    'Total Passengers',
+                    '${_boardedStudents.length}',
+                  ),
                   const SizedBox(height: 8),
-                  _buildSummaryRow(Icons.account_balance_wallet_rounded, 'Total Fares', 'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}'),
+                  _buildSummaryRow(
+                    Icons.account_balance_wallet_rounded,
+                    'Total Fares',
+                    'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}',
+                  ),
                   const SizedBox(height: 8),
-                  _buildSummaryRow(Icons.route_rounded, 'Route', widget.routeName),
+                  _buildSummaryRow(
+                    Icons.route_rounded,
+                    'Route',
+                    widget.routeName,
+                  ),
                 ],
               ),
             ),
@@ -1280,12 +1589,18 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                 backgroundColor: CommutasColors.primaryNavy,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 54),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 elevation: 0,
               ),
               child: const Text(
                 'RETURN TO SCHEDULE',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
@@ -1295,30 +1610,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
   }
 
   // ─── ERROR BANNER ─────────────────────────────────────────────────────
-  Widget _buildErrorBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      color: const Color(0xFFFFF3F3),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, color: CommutasColors.danger, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _errorMsg!,
-              style: const TextStyle(fontSize: 11, color: CommutasColors.danger),
-            ),
-          ),
-          GestureDetector(
-            onTap: () => setState(() => _errorMsg = null),
-            child: const Icon(Icons.close, size: 16, color: CommutasColors.danger),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── BOTTOM ACTION BUTTON ─────────────────────────────────────────────
   Widget _buildBottomAction() {
     return Container(
@@ -1337,12 +1628,18 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                   backgroundColor: CommutasColors.primaryNavy,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 54),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
                   'DEPART — START TRIP',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               )
             : ElevatedButton(
@@ -1351,12 +1648,18 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen> with Ticker
                   backgroundColor: CommutasColors.danger,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 54),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
                   'END TRIP',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
       ),

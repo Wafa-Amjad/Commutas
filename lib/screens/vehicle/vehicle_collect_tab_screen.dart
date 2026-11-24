@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'vehicle_session_screen.dart';
+import 'vehicle_error_snackbar.dart';
 import '../services/auth_service.dart';
+import '../services/friendly_error_message.dart';
 import '../../theme.dart';
 
 class VehicleCollectTabScreen extends StatefulWidget {
@@ -193,10 +195,15 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
     } catch (e) {
       developer.log('Error fetching assigned schedules: $e', name: 'VehicleCollectTabScreen');
       if (mounted) {
+        final message = friendlyErrorMessage(
+          e,
+          fallback: 'Route schedules are currently unavailable. Please try again shortly.',
+        );
         setState(() {
-          _fetchError = e.toString().replaceAll('Exception:', '').trim();
+          _fetchError = message;
           _isLoading = false;
         });
+        showVehicleErrorSnackBar(context, message, onRetry: _fetchAssignedSchedules);
       }
     }
   }
@@ -251,10 +258,15 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
     } catch (e) {
       developer.log('Session start failed: $e', name: 'VehicleCollectTabScreen');
       if (mounted) {
+        final message = friendlyErrorMessage(
+          e,
+          fallback: 'The boarding session could not be started. Please try again.',
+        );
         setState(() {
-          _fetchError = e.toString().replaceAll('Exception:', '').trim();
+          _fetchError = message;
           _isInitializingSession = false;
         });
+        showVehicleErrorSnackBar(context, message, onRetry: _initializeSession);
       }
     }
   }
@@ -339,51 +351,6 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Error card
-              if (_fetchError != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: CommutasColors.danger, width: 1.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: CommutasColors.danger, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            'ERROR',
-                            style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, color: CommutasColors.danger),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _fetchError!,
-                        style: const TextStyle(fontSize: 11, color: CommutasColors.slateMuted),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _fetchAssignedSchedules,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: CommutasColors.primaryNavy,
-                          foregroundColor: Colors.white,
-                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                          elevation: 0,
-                          minimumSize: const Size(double.infinity, 42),
-                        ),
-                        child: const Text('RETRY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-              
               Text(
                 'SELECT ROUTE SCHEDULE',
                 style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, letterSpacing: 0.5),

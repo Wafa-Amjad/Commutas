@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import '../../theme.dart';
+import 'vehicle_error_snackbar.dart';
 
 class VehicleMapScreen extends StatefulWidget {
   const VehicleMapScreen({super.key});
@@ -77,9 +78,7 @@ class _VehicleMapScreenState extends State<VehicleMapScreen> with SingleTickerPr
     final Uri url = Uri.parse('https://www.google.com/maps/search/?api=1&query=34.1912,73.2418');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not launch external maps.')),
-        );
+        showVehicleErrorSnackBar(context, 'Maps could not be opened. Please try again.');
       }
     }
   }

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme.dart';
 import '../services/auth_service.dart';
 import '../login_signup_screen.dart';
+import 'vehicle_error_snackbar.dart';
 
 class VehicleProfileScreen extends StatefulWidget {
   final String vehicleName;
@@ -21,6 +22,7 @@ class VehicleProfileScreen extends StatefulWidget {
 class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
   final AuthService _authService = AuthService();
   late Future<Map<String, dynamic>?> _profileFuture;
+  bool _profileErrorNotificationShown = false;
 
   @override
   void initState() {
@@ -55,10 +57,21 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
               ),
             );
           } else if (snapshot.hasError) {
+            if (!_profileErrorNotificationShown) {
+              _profileErrorNotificationShown = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  showVehicleErrorSnackBar(
+                    context,
+                    'Profile details are currently unavailable. Please try again shortly.',
+                  );
+                }
+              });
+            }
             return Center(
               child: Text(
-                'Failed to load profile details',
-                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.danger),
+                'Profile details are currently unavailable.',
+                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
               ),
             );
           } else if (!snapshot.hasData || snapshot.data == null) {
@@ -140,10 +153,9 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
                 end: Alignment.centerRight,
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final title = Row(
                   children: [
                     const Icon(
                       Icons.local_shipping_rounded,
@@ -151,18 +163,23 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
                       size: 20,
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      'VEHICLE SPECIFICATIONS',
-                      style: CommutasTextStyles.labelBold.copyWith(
-                        fontSize: 11,
-                        color: CommutasColors.primaryNavy,
-                        letterSpacing: 0.5,
+                    Flexible(
+                      child: Text(
+                        'VEHICLE SPECIFICATIONS',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: CommutasTextStyles.labelBold.copyWith(
+                          fontSize: 11,
+                          color: CommutasColors.primaryNavy,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ],
-                ),
-                // Pulsing Green Active badge
-                Row(
+                );
+
+                final verifiedBadge = Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const _PulsingDot(),
                     const SizedBox(width: 6),
@@ -176,8 +193,27 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
                       ),
                     ),
                   ],
-                ),
-              ],
+                );
+
+                if (constraints.maxWidth < 320) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      title,
+                      const SizedBox(height: 8),
+                      verifiedBadge,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: title),
+                    const SizedBox(width: 12),
+                    verifiedBadge,
+                  ],
+                );
+              },
             ),
           ),
           const Divider(height: 1, color: CommutasColors.lineBorder),

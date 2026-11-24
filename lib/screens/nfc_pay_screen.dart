@@ -14,10 +14,7 @@ import '../theme.dart';
 class NFCPayScreen extends StatefulWidget {
   final Function(int)? onNavigateToTab;
 
-  const NFCPayScreen({
-    super.key,
-    this.onNavigateToTab,
-  });
+  const NFCPayScreen({super.key, this.onNavigateToTab});
 
   @override
   State<NFCPayScreen> createState() => _NFCPayScreenState();
@@ -153,12 +150,14 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       if (!isSupported) {
         setState(() {
           _hceSupported = false;
-          _statusMessage = 'NFC HCE is not supported on this device. Use QR Code instead.';
+          _statusMessage =
+              'NFC is not supported on this device. Please use the QR code instead.';
         });
       } else if (!isEnabled) {
         setState(() {
           _hceSupported = true;
-          _statusMessage = 'NFC is disabled. Please enable it in Settings.';
+          _statusMessage =
+              'NFC is turned off. Enable it in Settings or use the QR code instead.';
         });
       } else {
         await _hcePlugin.startNfcHce(
@@ -176,7 +175,8 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       if (mounted) {
         setState(() {
           _hceSupported = false;
-          _statusMessage = 'Contactless sensor error. Use QR code instead.';
+          _statusMessage =
+              'NFC is not supported on this device. Please use the QR code instead.';
         });
       }
     }
@@ -209,7 +209,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       });
 
       // Poll status every 2 seconds
-      if (_secondsRemaining % 2 == 0 && _tokenId != null && _step == PayStep.broadcasting) {
+      if (_secondsRemaining % 2 == 0 &&
+          _tokenId != null &&
+          _step == PayStep.broadcasting) {
         _checkTokenStatus();
       }
     });
@@ -222,7 +224,10 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       final token = prefs.getString('session_token') ?? '';
       if (token.isEmpty) return;
 
-      final res = await _authService.getPaymentTokenStatus(token: token, tokenId: _tokenId!);
+      final res = await _authService.getPaymentTokenStatus(
+        token: token,
+        tokenId: _tokenId!,
+      );
       if (res != null && mounted) {
         final status = res['status'] as String?;
         if (status == 'USED') {
@@ -257,16 +262,18 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(CommutasColors.primaryNavy),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  CommutasColors.primaryNavy,
+                ),
               ),
             )
           : _step == PayStep.success
-              ? _buildSuccessView()
-              : _step == PayStep.failure
-                  ? _buildFailureView()
-                  : _step == PayStep.broadcasting
-                      ? _buildBroadcastView()
-                      : _buildBalancePreview(),
+          ? _buildSuccessView()
+          : _step == PayStep.failure
+          ? _buildFailureView()
+          : _step == PayStep.broadcasting
+          ? _buildBroadcastView()
+          : _buildBalancePreview(),
     );
   }
 
@@ -292,7 +299,10 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             const SizedBox(height: 32),
             Text(
               'PAYMENT SUCCESSFUL',
-              style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.emeraldGreen, letterSpacing: 1.0),
+              style: CommutasTextStyles.heading2.copyWith(
+                color: CommutasColors.emeraldGreen,
+                letterSpacing: 1.0,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -314,12 +324,17 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 backgroundColor: CommutasColors.primaryNavy,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 50),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 elevation: 0,
               ),
               child: const Text(
                 'DONE',
-                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
@@ -350,7 +365,10 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             const SizedBox(height: 32),
             Text(
               'PAYMENT FAILED',
-              style: CommutasTextStyles.heading2.copyWith(color: CommutasColors.danger, letterSpacing: 1.0),
+              style: CommutasTextStyles.heading2.copyWith(
+                color: CommutasColors.danger,
+                letterSpacing: 1.0,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -372,12 +390,17 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 backgroundColor: CommutasColors.primaryNavy,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 50),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 elevation: 0,
               ),
               child: const Text(
                 'TRY AGAIN',
-                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ],
@@ -398,7 +421,11 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Header
-            const Icon(Icons.contactless_outlined, size: 48, color: CommutasColors.primaryNavy),
+            const Icon(
+              Icons.contactless_outlined,
+              size: 48,
+              color: CommutasColors.primaryNavy,
+            ),
             const SizedBox(height: 16),
             Text(
               'BOARDING TICKET',
@@ -408,7 +435,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             const SizedBox(height: 8),
             Text(
               'Generate a secure NFC boarding ticket to pay your fare when boarding.',
-              style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.bodySmall.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
@@ -418,22 +447,35 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
+                border: Border.all(
+                  color: CommutasColors.lineBorder,
+                  width: 1.5,
+                ),
               ),
               child: Column(
                 children: [
-                  _buildFareRow('Wallet Balance', 'Rs. ${_walletBalance.toStringAsFixed(2)}',
-                      color: hasSufficientBalance ? CommutasColors.emeraldGreen : CommutasColors.danger),
+                  _buildFareRow(
+                    'Wallet Balance',
+                    'Rs. ${_walletBalance.toStringAsFixed(2)}',
+                    color: hasSufficientBalance
+                        ? CommutasColors.emeraldGreen
+                        : CommutasColors.danger,
+                  ),
                   const Divider(height: 24, color: CommutasColors.lineBorder),
-                  _buildFareRow('Standard Fare', 'Rs. ${fareAmount.toStringAsFixed(2)}',
-                      color: CommutasColors.primaryNavy),
+                  _buildFareRow(
+                    'Standard Fare',
+                    'Rs. ${fareAmount.toStringAsFixed(2)}',
+                    color: CommutasColors.primaryNavy,
+                  ),
                   const Divider(height: 24, color: CommutasColors.lineBorder),
                   _buildFareRow(
                     'Balance After Deduction',
                     hasSufficientBalance
                         ? 'Rs. ${remainingBalance.toStringAsFixed(2)}'
                         : '— Insufficient —',
-                    color: hasSufficientBalance ? CommutasColors.slateMuted : CommutasColors.danger,
+                    color: hasSufficientBalance
+                        ? CommutasColors.slateMuted
+                        : CommutasColors.danger,
                     isBold: true,
                   ),
                 ],
@@ -451,12 +493,18 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, color: CommutasColors.danger, size: 18),
+                    const Icon(
+                      Icons.error_outline,
+                      color: CommutasColors.danger,
+                      size: 18,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         _errorMsg!,
-                        style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.danger),
+                        style: CommutasTextStyles.bodySmall.copyWith(
+                          color: CommutasColors.danger,
+                        ),
                       ),
                     ),
                   ],
@@ -472,13 +520,18 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CommutasColors.primaryNavy,
                   foregroundColor: Colors.white,
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
                   elevation: 0,
                   minimumSize: const Size(double.infinity, 52),
                 ),
                 child: const Text(
                   'GENERATE BOARDING TICKET',
-                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
                 ),
               )
             else ...[
@@ -491,7 +544,11 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber_rounded, color: Color(0xFFB78103), size: 20),
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFB78103),
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -513,13 +570,18 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CommutasColors.primaryNavy,
                   foregroundColor: Colors.white,
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
                   elevation: 0,
                   minimumSize: const Size(double.infinity, 52),
                 ),
                 child: const Text(
                   'GO TO WALLET & TOP UP',
-                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
                 ),
               ),
             ],
@@ -530,8 +592,13 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
               onPressed: _fetchBalance,
               style: OutlinedButton.styleFrom(
                 foregroundColor: CommutasColors.primaryNavy,
-                side: const BorderSide(color: CommutasColors.primaryNavy, width: 1.5),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                side: const BorderSide(
+                  color: CommutasColors.primaryNavy,
+                  width: 1.5,
+                ),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
                 minimumSize: const Size(double.infinity, 48),
               ),
               child: const Text('REFRESH BALANCE'),
@@ -542,7 +609,12 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
     );
   }
 
-  Widget _buildFareRow(String label, String value, {Color? color, bool isBold = false}) {
+  Widget _buildFareRow(
+    String label,
+    String value, {
+    Color? color,
+    bool isBold = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -574,7 +646,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             _buildHceVisual(),
             const SizedBox(height: 32),
             Text(
-              _hceActive ? 'Hold Near Driver\'s Phone' : 'Present QR Code to Driver',
+              _hceActive
+                  ? 'Hold Near Driver\'s Phone'
+                  : 'Present QR Code to Driver',
               style: CommutasTextStyles.heading2,
             ),
             const SizedBox(height: 8),
@@ -583,7 +657,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
                   ? 'Bring the back of your device close to the driver\'s phone to authorize fare deduction.'
                   : 'Show this QR code to the driver for manual fare collection.',
               textAlign: TextAlign.center,
-              style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+              style: CommutasTextStyles.bodySmall.copyWith(
+                color: CommutasColors.slateMuted,
+              ),
             ),
             const SizedBox(height: 24),
             _buildBackupQrCard(),
@@ -626,7 +702,11 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             border: Border.all(color: CommutasColors.lineBorder),
             boxShadow: [
               BoxShadow(
-                color: (active ? CommutasColors.emeraldGreen : CommutasColors.slateMuted).withOpacity(0.2),
+                color:
+                    (active
+                            ? CommutasColors.emeraldGreen
+                            : CommutasColors.slateMuted)
+                        .withOpacity(0.2),
                 blurRadius: 16,
                 offset: const Offset(0, 8),
               ),
@@ -682,11 +762,18 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.qr_code_2, color: CommutasColors.primaryNavy, size: 16),
+              const Icon(
+                Icons.qr_code_2,
+                color: CommutasColors.primaryNavy,
+                size: 16,
+              ),
               const SizedBox(width: 8),
               Text(
                 'BACKUP TICKET QR CODE',
-                style: CommutasTextStyles.labelBold.copyWith(fontSize: 10, color: CommutasColors.primaryNavy),
+                style: CommutasTextStyles.labelBold.copyWith(
+                  fontSize: 10,
+                  color: CommutasColors.primaryNavy,
+                ),
               ),
             ],
           ),
@@ -730,7 +817,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
         children: [
           Icon(
             active ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-            color: active ? CommutasColors.emeraldGreen : const Color(0xFFFFB300),
+            color: active
+                ? CommutasColors.emeraldGreen
+                : const Color(0xFFFFB300),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -738,7 +827,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
             child: Text(
               _statusMessage,
               style: TextStyle(
-                color: active ? CommutasColors.emeraldGreen : const Color(0xFFB78103),
+                color: active
+                    ? CommutasColors.emeraldGreen
+                    : const Color(0xFFB78103),
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
               ),

@@ -1,6 +1,6 @@
 import 'services/auth_service.dart';
+import 'services/friendly_error_message.dart';
 import 'services/biometric_service.dart';
-import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'verification_screen.dart';
@@ -307,17 +307,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         }
       }
     } catch (e) {
-      String errorMsg = "Login failed. Check connection or credentials.";
-      if (e is DioException) {
-        final detail = e.response?.data?['detail'];
-        if (detail != null) {
-          errorMsg = detail.toString();
-        } else if (e.message != null) {
-          errorMsg = e.message!;
-        }
-      } else {
-        errorMsg = e.toString();
-      }
+      final errorMsg = friendlyErrorMessage(
+        e,
+        fallback: 'Sign-in could not be completed. Please check your credentials and try again.',
+      );
       _setError(errorMsg);
     } finally {
       if (mounted) {
@@ -400,17 +393,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         _setError("Biometric sign-in failed. Use app password.");
       }
     } catch (e) {
-      String errorMsg = "Login failed. Check connection or credentials.";
-      if (e is DioException) {
-        final detail = e.response?.data?['detail'];
-        if (detail != null) {
-          errorMsg = detail.toString();
-        } else if (e.message != null) {
-          errorMsg = e.message!;
-        }
-      } else {
-        errorMsg = e.toString();
-      }
+      final errorMsg = friendlyErrorMessage(
+        e,
+        fallback: 'Biometric sign-in could not be completed. Use your password or try again.',
+      );
       _setError(errorMsg);
     } finally {
       if (mounted) {
@@ -716,42 +702,44 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             label: 'SIGN IN',
             onPressed: _handleSignIn,
           ),
-        const SizedBox(height: 20.0),
+        if (_activeRole == UserRole.student) ...[
+          const SizedBox(height: 20.0),
 
-        // OR Redirect
-        Row(
-          children: [
-            const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('OR', style: GoogleFonts.jetBrainsMono(color: CommutasColors.slateMuted, fontSize: 12)),
-            ),
-            const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
-          ],
-        ),
-        const SizedBox(height: 16.0),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('New student? ', style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText)),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isRegisterTab = true;
-                  _errorMessage = null;
-                });
-              },
-              child: Text(
-                'Create account',
-                style: CommutasTextStyles.bodySmall.copyWith(
-                  color: CommutasColors.primaryNavy,
-                  decoration: TextDecoration.underline,
-                  fontWeight: FontWeight.bold,
+          // Student-only registration redirect
+          Row(
+            children: [
+              const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Text('OR', style: GoogleFonts.jetBrainsMono(color: CommutasColors.slateMuted, fontSize: 12)),
+              ),
+              const Expanded(child: Divider(color: CommutasColors.lineBorder, thickness: 1.5)),
+            ],
+          ),
+          const SizedBox(height: 16.0),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('New student? ', style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.inkText)),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isRegisterTab = true;
+                    _errorMessage = null;
+                  });
+                },
+                child: Text(
+                  'Create account',
+                  style: CommutasTextStyles.bodySmall.copyWith(
+                    color: CommutasColors.primaryNavy,
+                    decoration: TextDecoration.underline,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }

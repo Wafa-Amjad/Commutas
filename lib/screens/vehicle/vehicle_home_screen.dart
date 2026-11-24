@@ -5,8 +5,10 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import '../../theme.dart';
 import '../services/auth_service.dart';
+import '../services/friendly_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'vehicle_history_screen.dart';
+import 'vehicle_error_snackbar.dart';
 
 class VehicleHomeScreen extends StatefulWidget {
   final String vehicleName;
@@ -106,10 +108,15 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
       }
     } catch (e) {
       if (mounted) {
+        final message = friendlyErrorMessage(
+          e,
+          fallback: 'Assigned routes are currently unavailable. Please try again shortly.',
+        );
         setState(() {
-          _routesError = e.toString().replaceAll('Exception:', '').trim();
+          _routesError = message;
           _isLoadingRoutes = false;
         });
+        showVehicleErrorSnackBar(context, message, onRetry: _loadRoutes);
       }
     }
   }
@@ -795,17 +802,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
       );
     }
 
-    if (_routesError != null) {
-      return Container(
-        width: double.infinity,
-        decoration: CommutasShapes.cardDecoration,
-        padding: const EdgeInsets.all(16.0),
-        child: Text(
-          'Error loading assigned runs: $_routesError',
-          style: TextStyle(color: CommutasColors.danger, fontSize: 12),
-        ),
-      );
-    }
+    if (_routesError != null) return const SizedBox.shrink();
 
     final routes = _allAssignedRoutes ?? [];
     
