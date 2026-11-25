@@ -18,7 +18,7 @@ import 'vehicle_error_snackbar.dart';
 ///
 /// Lifecycle: BOARDING → TRANSIT → COMPLETED
 /// - BOARDING: NFC reader active, collecting student fares
-/// - TRANSIT: GPS broadcasting via WebSocket, live location card, custom animated vector map
+/// - TRANSIT: GPS broadcasting via WebSocket, fare collection, expandable live map
 /// - COMPLETED: Trip summary, return to schedule selection
 class VehicleSessionScreen extends StatefulWidget {
   final String sessionId;
@@ -48,7 +48,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
     with TickerProviderStateMixin {
   final AuthService _authService = AuthService();
   late final AnimationController _pulseController;
-  final MapController _flutterMapController = MapController();
 
   // Session state
   late String _sessionId;
@@ -70,6 +69,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   bool _isSessionClosing = false;
   Position? _currentPosition;
   String _gpsStatus = 'GPS Idle';
+  bool _isMapExpanded = false;
+  Offset? _miniMapOffset;
+  static const double _miniMapWidth = 164;
+  static const double _miniMapHeight = 146;
+  static const double _miniMapMargin = 12;
 
   // Feedback overlay state
   String? _feedbackType; // 'SUCCESS' or 'DENIED'
@@ -572,10 +576,6 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
               'Broadcasting: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
         });
 
-        try {
-          _flutterMapController.move(LatLng(pos.latitude, pos.longitude), 15.0);
-        } catch (_) {}
-
         if (_wsChannel != null) {
           try {
             _wsChannel!.sink.add(
@@ -679,211 +679,222 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   // ─── BUILD ────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        CommutasColors.primaryNavy,
+    return PopScope(
+      canPop: !_isMapExpanded || _status != 'TRANSIT' || _isLoading,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isMapExpanded && _status == 'TRANSIT' && !_isLoading) {
+          _toggleMapExpanded();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          CommutasColors.primaryNavy,
+                        ),
                       ),
+                    )
+                  : _status == 'COMPLETED'
+                  ? _buildCompletedView()
+                  : Column(
+                      children: [
+                        _buildSessionHeader(),
+                        Expanded(
+                          child: _status == 'BOARDING'
+                              ? _buildBoardingView()
+                              : _buildTransitView(),
+                        ),
+                        _buildBottomAction(),
+                      ],
                     ),
-                  )
-                : _status == 'COMPLETED'
-                ? _buildCompletedView()
-                : Column(
-                    children: [
-                      _buildSessionHeader(),
-                      Expanded(
-                        child: _status == 'BOARDING'
-                            ? _buildBoardingView()
-                            : _buildTransitView(),
-                      ),
-                      _buildBottomAction(),
-                    ],
-                  ),
-            if (_feedbackType != null)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  child: Center(
-                    child: TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0.8, end: 1.0),
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutBack,
-                      builder: (context, scale, child) {
-                        return Transform.scale(scale: scale, child: child);
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 40),
-                        padding: const EdgeInsets.all(32),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              color: _feedbackType == 'SUCCESS'
-                                  ? CommutasColors.lightGreenBg
-                                  : const Color(0xFFFFF3F3),
-                              child: Icon(
-                                _feedbackType == 'SUCCESS'
-                                    ? Icons.check_circle_rounded
-                                    : Icons.cancel_rounded,
-                                color: _feedbackType == 'SUCCESS'
-                                    ? CommutasColors.emeraldGreen
-                                    : CommutasColors.danger,
-                                size: 64,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              _feedbackType!,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _feedbackType == 'SUCCESS'
-                                    ? CommutasColors.emeraldGreen
-                                    : CommutasColors.danger,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _feedbackMessage ?? '',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: CommutasColors.primaryNavy,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            if (_isScanningQr)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: MobileScanner(
-                          onDetect: (capture) {
-                            final List<Barcode> barcodes = capture.barcodes;
-                            for (final barcode in barcodes) {
-                              final String? code = barcode.rawValue;
-                              if (code != null && code.isNotEmpty) {
-                                _onQrScanned(code);
-                                break;
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                      // Semi-transparent overlay with a cutout
-                      Positioned.fill(
-                        child: ColorFiltered(
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withValues(alpha: 0.6),
-                            BlendMode.srcOut,
+              // Above the dashboard, but below fare feedback and the QR scanner.
+              if (!_isLoading && _status == 'TRANSIT' && _isMapExpanded)
+                Positioned.fill(child: _buildExpandedMap()),
+              if (_feedbackType != null)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    child: Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(begin: 0.8, end: 1.0),
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutBack,
+                        builder: (context, scale, child) {
+                          return Transform.scale(scale: scale, child: child);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 40),
+                          padding: const EdgeInsets.all(32),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.zero,
                           ),
-                          child: Stack(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Positioned.fill(
-                                child: Container(color: Colors.black),
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                color: _feedbackType == 'SUCCESS'
+                                    ? CommutasColors.lightGreenBg
+                                    : const Color(0xFFFFF3F3),
+                                child: Icon(
+                                  _feedbackType == 'SUCCESS'
+                                      ? Icons.check_circle_rounded
+                                      : Icons.cancel_rounded,
+                                  color: _feedbackType == 'SUCCESS'
+                                      ? CommutasColors.emeraldGreen
+                                      : CommutasColors.danger,
+                                  size: 64,
+                                ),
                               ),
-                              Center(
-                                child: Container(
-                                  width: 240,
-                                  height: 240,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(0),
-                                  ),
+                              const SizedBox(height: 24),
+                              Text(
+                                _feedbackType!,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: _feedbackType == 'SUCCESS'
+                                      ? CommutasColors.emeraldGreen
+                                      : CommutasColors.danger,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _feedbackMessage ?? '',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: CommutasColors.primaryNavy,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      // Corner borders
-                      Center(
-                        child: Container(
-                          width: 240,
-                          height: 240,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: CommutasColors.emeraldGreen,
-                              width: 3,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Scanning prompt text
-                      Positioned(
-                        top: 40,
-                        left: 20,
-                        right: 20,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          color: Colors.black.withValues(alpha: 0.6),
-                          child: const Text(
-                            'Scan student QR boarding ticket to collect fare',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Cancel Button
-                      Positioned(
-                        bottom: 40,
-                        left: 40,
-                        right: 40,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            setState(() {
-                              _isScanningQr = false;
-                            });
-                            _startNfcReader();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: CommutasColors.primaryNavy,
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.zero,
-                            ),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            'CANCEL SCAN',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+              if (_isScanningQr)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: MobileScanner(
+                            onDetect: (capture) {
+                              final List<Barcode> barcodes = capture.barcodes;
+                              for (final barcode in barcodes) {
+                                final String? code = barcode.rawValue;
+                                if (code != null && code.isNotEmpty) {
+                                  _onQrScanned(code);
+                                  break;
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                        // Semi-transparent overlay with a cutout
+                        Positioned.fill(
+                          child: ColorFiltered(
+                            colorFilter: ColorFilter.mode(
+                              Colors.black.withValues(alpha: 0.6),
+                              BlendMode.srcOut,
+                            ),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Container(color: Colors.black),
+                                ),
+                                Center(
+                                  child: Container(
+                                    width: 240,
+                                    height: 240,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(0),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Corner borders
+                        Center(
+                          child: Container(
+                            width: 240,
+                            height: 240,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: CommutasColors.emeraldGreen,
+                                width: 3,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Scanning prompt text
+                        Positioned(
+                          top: 40,
+                          left: 20,
+                          right: 20,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            color: Colors.black.withValues(alpha: 0.6),
+                            child: const Text(
+                              'Scan student QR boarding ticket to collect fare',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Cancel Button
+                        Positioned(
+                          bottom: 40,
+                          left: 40,
+                          right: 40,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _isScanningQr = false;
+                              });
+                              _startNfcReader();
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: CommutasColors.primaryNavy,
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero,
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Text(
+                              'CANCEL SCAN',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -978,7 +989,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   Widget _buildBoardingView() {
     return Column(
       children: [
-        _buildNfcRadar(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: _buildNfcRadar(),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
@@ -1114,14 +1128,24 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
     );
   }
 
-  Widget _buildNfcRadar() {
+  Widget _buildSessionCard({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(20),
+  }) {
     return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
       ),
+      child: child,
+    );
+  }
+
+  Widget _buildNfcRadar() {
+    return _buildSessionCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           Row(
@@ -1239,253 +1263,248 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   // ─── TRANSIT VIEW ─────────────────────────────────────────────────────
   Widget _buildTransitView() {
-    final hasCoords = _currentPosition != null;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The overlay is confined to the transit body: it cannot cover the
+        // session header or the fixed End Trip button.
+        final availableWidth =
+            (constraints.maxWidth - 2 * _miniMapMargin).clamp(0.0, _miniMapWidth).toDouble();
+        final availableHeight =
+            (constraints.maxHeight - 2 * _miniMapMargin).clamp(0.0, _miniMapHeight).toDouble();
+        final canShowMiniMap = availableWidth >= 128 && availableHeight >= 112;
+        final minX = _miniMapMargin;
+        final minY = _miniMapMargin;
+        final maxX = (constraints.maxWidth - availableWidth - _miniMapMargin)
+            .clamp(minX, double.infinity).toDouble();
+        final maxY = (constraints.maxHeight - availableHeight - _miniMapMargin)
+            .clamp(minY, double.infinity).toDouble();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          // Live Map Card using flutter_map
-          Container(
-            width: double.infinity,
-            height: 220,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
-            ),
-            child: !hasCoords
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            CommutasColors.primaryNavy,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Awaiting live GPS coordinates...',
-                          style: CommutasTextStyles.bodySmall.copyWith(
-                            color: CommutasColors.slateMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : FlutterMap(
-                    mapController: _flutterMapController,
-                    options: MapOptions(
-                      initialCenter: LatLng(
-                        _currentPosition!.latitude,
-                        _currentPosition!.longitude,
-                      ),
-                      initialZoom: 15.0,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'pk.edu.comsats.commutas',
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: LatLng(
-                              _currentPosition!.latitude,
-                              _currentPosition!.longitude,
-                            ),
-                            width: 40,
-                            height: 40,
-                            child: const Icon(
-                              Icons.directions_bus_rounded,
-                              color: CommutasColors.primaryNavy,
-                              size: 30,
-                            ),
-                          ),
-                        ],
+        Offset constrain(Offset offset) => Offset(
+          offset.dx.clamp(minX, maxX).toDouble(),
+          offset.dy.clamp(minY, maxY).toDouble(),
+        );
+        final defaultOffset = Offset(maxX, maxY);
+        final position = constrain(_miniMapOffset ?? defaultOffset);
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: SingleChildScrollView(
+                // Reserve scroll room so the floating map cannot permanently
+                // obscure the existing fare reader or trip summary.
+                padding: EdgeInsets.fromLTRB(
+                  20, 20, 20,
+                  canShowMiniMap ? 20 + availableHeight + _miniMapMargin : 20,
+                ),
+                child: Column(
+                  children: [
+                    _buildNfcRadar(),
+                    const SizedBox(height: 16),
+                    _buildTripSummaryCard(),
+                    if (!canShowMiniMap) ...[
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: _toggleMapExpanded,
+                        icon: const Icon(Icons.map_outlined),
+                        label: const Text('Open bus location'),
                       ),
                     ],
-                  ),
-          ),
-          const SizedBox(height: 16),
-
-          // NFC & QR scan option during Transit
-          _buildNfcRadar(),
-          const SizedBox(height: 16),
-
-          // Live GPS Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AnimatedBuilder(
-                          animation: _pulseController,
-                          builder: (_, __) {
-                            return Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: CommutasColors.accentCobalt.withValues(
-                                  alpha: 0.08 * (1.0 - _pulseController.value),
-                                ),
-                                border: Border.all(
-                                  color: CommutasColors.accentCobalt.withValues(
-                                    alpha:
-                                        0.20 * (1.0 - _pulseController.value),
-                                  ),
-                                  width: 1.5,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        Container(
-                          width: 32,
-                          height: 32,
-                          color: CommutasColors.primaryNavy,
-                          child: const Icon(
-                            Icons.radar_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'LIVE LOCATION BROADCAST',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              color: CommutasColors.primaryNavy,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _gpsStatus,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: CommutasColors.emeraldGreen,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
-                if (_currentPosition != null) ...[
-                  const SizedBox(height: 16),
-                  const Divider(color: CommutasColors.lineBorder, height: 1),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildCoordTile(
-                          'LATITUDE',
-                          _currentPosition!.latitude.toStringAsFixed(6),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildCoordTile(
-                          'LONGITUDE',
-                          _currentPosition!.longitude.toStringAsFixed(6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
+              ),
+            ),
+            if (canShowMiniMap && !_isMapExpanded)
+              Positioned(
+                left: position.dx,
+                top: position.dy,
+                width: availableWidth,
+                height: availableHeight,
+                child: _buildMiniMap(
+                  onDrag: (details) {
+                    setState(() {
+                      final current = constrain(_miniMapOffset ?? defaultOffset);
+                      _miniMapOffset = constrain(current + details.delta);
+                    });
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTripSummaryCard() {
+    return _buildSessionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'TRIP SUMMARY',
+            style: CommutasTextStyles.labelBold.copyWith(
+              fontSize: 10,
+              color: CommutasColors.slateMuted,
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Trip summary card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: CommutasColors.lineBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'TRIP SUMMARY',
-                  style: CommutasTextStyles.labelBold.copyWith(
-                    fontSize: 10,
-                    color: CommutasColors.slateMuted,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildSummaryRow(
-                  Icons.people_rounded,
-                  'Passengers Boarded',
-                  '${_boardedStudents.length}',
-                ),
-                const SizedBox(height: 8),
-                _buildSummaryRow(
-                  Icons.account_balance_wallet_rounded,
-                  'Fares Collected',
-                  'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}',
-                ),
-                const SizedBox(height: 8),
-                _buildSummaryRow(
-                  Icons.route_rounded,
-                  'Route',
-                  widget.routeName,
-                ),
-              ],
-            ),
+          const SizedBox(height: 12),
+          _buildSummaryRow(
+            Icons.people_rounded,
+            'Passengers Boarded',
+            '${_boardedStudents.length}',
+          ),
+          const SizedBox(height: 8),
+          _buildSummaryRow(
+            Icons.account_balance_wallet_rounded,
+            'Fares Collected',
+            'Rs. ${(_boardedStudents.length * 100).toStringAsFixed(0)}',
+          ),
+          const SizedBox(height: 8),
+          _buildSummaryRow(
+            Icons.route_rounded,
+            'Route',
+            widget.routeName,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCoordTile(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 8,
-            fontWeight: FontWeight.bold,
-            color: CommutasColors.slateMuted,
-            letterSpacing: 0.5,
+  Widget _buildMiniMap({required GestureDragUpdateCallback onDrag}) {
+    return Semantics(
+      button: true,
+      label: 'Bus location. Tap to expand or drag to move. $_gpsStatus',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleMapExpanded,
+        onPanUpdate: onDrag,
+        child: Material(
+          color: Colors.white,
+          elevation: 2,
+          shape: const RoundedRectangleBorder(
+            side: BorderSide(color: CommutasColors.lineBorder),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                // Only the floating window receives gestures in mini mode.
+                // The map itself cannot intercept taps or drag the camera.
+                child: IgnorePointer(child: _buildLiveMap(interactive: false)),
+              ),
+              Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                color: CommutasColors.primaryNavy,
+                child: Row(
+                  children: [
+                    const Icon(Icons.drag_indicator, color: Colors.white70, size: 16),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Bus location',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            _gpsStatus,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white70, fontSize: 9),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.open_in_full_rounded, color: Colors.white, size: 16),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: CommutasColors.primaryNavy,
-            fontFamily: 'monospace',
-          ),
-        ),
-      ],
+      ),
     );
+  }
+
+  Widget _buildExpandedMap() {
+    return ColoredBox(
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            color: CommutasColors.primaryNavy,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Bus location',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _gpsStatus,
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Minimize map',
+                  onPressed: _toggleMapExpanded,
+                  icon: const Icon(Icons.close_fullscreen_rounded, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildLiveMap(interactive: true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveMap({required bool interactive}) {
+    final position = _currentPosition;
+    if (position == null) {
+      return ColoredBox(
+        color: CommutasColors.backgroundGray,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.location_searching, color: CommutasColors.slateMuted, size: 20),
+                const SizedBox(height: 4),
+                Text(
+                  'Awaiting live GPS',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: CommutasColors.slateMuted, fontSize: interactive ? 13 : 10),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return _VehicleLiveMap(
+      position: LatLng(position.latitude, position.longitude),
+      interactive: interactive,
+    );
+  }
+
+  void _toggleMapExpanded() {
+    if (!mounted || _status != 'TRANSIT') return;
+    setState(() => _isMapExpanded = !_isMapExpanded);
   }
 
   Widget _buildSummaryRow(IconData icon, String label, String value) {
@@ -1663,6 +1682,128 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
                 ),
               ),
       ),
+    );
+  }
+}
+
+// Each map instance owns its controller. Switching mini/full mode never
+// attaches one MapController to two FlutterMap widgets.
+class _VehicleLiveMap extends StatefulWidget {
+  final LatLng position;
+  final bool interactive;
+
+  const _VehicleLiveMap({required this.position, required this.interactive});
+
+  @override
+  State<_VehicleLiveMap> createState() => _VehicleLiveMapState();
+}
+
+class _VehicleLiveMapState extends State<_VehicleLiveMap> {
+  final MapController _controller = MapController();
+  bool _mapReady = false;
+  bool _followVehicle = true;
+
+  @override
+  void didUpdateWidget(covariant _VehicleLiveMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.position.latitude != widget.position.latitude ||
+        oldWidget.position.longitude != widget.position.longitude) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _mapReady && _followVehicle) _centerOnVehicle();
+      });
+    }
+  }
+
+  void _centerOnVehicle() {
+    if (!_mapReady) return;
+    _controller.move(
+      widget.position,
+      widget.interactive ? _controller.camera.zoom : 15.0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        FlutterMap(
+          mapController: _controller,
+          options: MapOptions(
+            initialCenter: widget.position,
+            initialZoom: 15.0,
+            interactionOptions: InteractionOptions(
+              flags: widget.interactive ? InteractiveFlag.all : InteractiveFlag.none,
+            ),
+            onMapReady: () {
+              _mapReady = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _followVehicle) _centerOnVehicle();
+              });
+            },
+            onPositionChanged: (_, hasGesture) {
+              if (widget.interactive && hasGesture) _followVehicle = false;
+            },
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'pk.edu.comsats.commutas',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: widget.position,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.directions_bus_rounded,
+                    color: CommutasColors.primaryNavy,
+                    size: 30,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ColoredBox(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+              child: Text(
+                '© OpenStreetMap contributors',
+                style: TextStyle(fontSize: widget.interactive ? 10 : 8, color: Colors.black87),
+              ),
+            ),
+          ),
+        ),
+        if (widget.interactive)
+          Positioned(
+            right: 12,
+            bottom: 26,
+            child: Material(
+              color: Colors.white,
+              elevation: 2,
+              child: IconButton(
+                tooltip: 'Center on bus',
+                onPressed: () {
+                  _followVehicle = true;
+                  _centerOnVehicle();
+                },
+                icon: const Icon(Icons.my_location, color: CommutasColors.primaryNavy),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
