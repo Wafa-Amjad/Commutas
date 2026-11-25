@@ -248,6 +248,10 @@ class _MainScreenState extends State<MainScreen> {
         decoration: BoxDecoration(
           color: CommutasColors.primaryNavy,
           borderRadius: BorderRadius.zero, // Rectangular feel
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
               color: CommutasColors.accentCobalt.withOpacity(0.2),
@@ -261,14 +265,14 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             Icon(
               Icons.nfc_rounded,
-              color: isSelected ? CommutasColors.accentCobalt : Colors.white,
+              color: Colors.white,
               size: 24,
             ),
             const SizedBox(height: 2),
             Text(
               widget.role == 'vehicle' ? 'COLLECT' : 'PAY',
               style: TextStyle(
-                color: isSelected ? CommutasColors.accentCobalt : Colors.white,
+                color: Colors.white,
                 fontSize: 8,
                 fontWeight: FontWeight.bold,
               ),

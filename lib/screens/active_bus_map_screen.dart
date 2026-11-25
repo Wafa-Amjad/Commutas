@@ -535,7 +535,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
                       ? 'Connected. Waiting for first GPS update from driver...'
                       : _connectionStatus == 'CONNECTING'
                       ? 'Establishing connection to bus...'
-                      : 'Unable to connect. Retrying automatically...',
+                      : 'We can\'t reach the bus right now. We\'ll keep trying...',
                   style: CommutasTextStyles.bodySmall.copyWith(
                     color: CommutasColors.slateMuted,
                   ),

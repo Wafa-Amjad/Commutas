@@ -1,12 +1,15 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_nfc_hce/flutter_nfc_hce.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
 import 'services/auth_service.dart';
 import 'services/wallet_service.dart';
 import 'services/friendly_error_message.dart';
 import '../theme.dart';
+import '../widgets/commutas_error_state.dart';
 
 /// Student payment screen with a 3-step flow:
 /// Step 1: Balance & Fare Preview (fetch balance, show fare, check eligibility)
@@ -14,7 +17,6 @@ import '../theme.dart';
 /// Step 3: NFC/QR Broadcast (token active, countdown running)
 class NFCPayScreen extends StatefulWidget {
   final Function(int)? onNavigateToTab;
-
   const NFCPayScreen({super.key, this.onNavigateToTab});
 
   @override
@@ -27,23 +29,21 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   final AuthService _authService = AuthService();
   final WalletService _walletService = WalletService();
   final _hcePlugin = FlutterNfcHce();
-
   // State
   PayStep _step = PayStep.balancePreview;
   bool _isLoading = true;
   String? _errorMsg;
-
   // Balance preview
   double? _walletBalance;
   bool _walletBalanceIsStale = false;
   static const double fareAmount = 100.0;
-
   // Token broadcast
   String? _tokenId;
   int _secondsRemaining = 300;
   Timer? _timer;
   bool _hceActive = false;
   bool _hceSupported = false;
+  bool _isCheckingTokenStatus = false;
   String _statusMessage = '';
   String? _statusRefreshError;
 
@@ -61,22 +61,20 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   }
 
   // ─── STEP 1: Fetch wallet balance ─────────────────────────────────────
+
   Future<void> _fetchBalance() async {
     setState(() {
       _isLoading = true;
       _errorMsg = null;
       _step = PayStep.balancePreview;
     });
-
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('session_token') ?? '';
       if (token.isEmpty) {
         throw Exception('User is not authenticated. Please log in.');
       }
-
       final balance = await _walletService.fetchWalletBalance(token: token);
-
       if (mounted) {
         setState(() {
           _walletBalance = balance;
@@ -90,7 +88,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           _errorMsg = friendlyErrorMessage(
             e,
             fallback:
-                'Unable to retrieve your wallet balance. Please check your connection and refresh.',
+                'We couldn\'t load your wallet balance. Check your connection and try again.',
           );
           _walletBalanceIsStale = _walletBalance != null;
           _isLoading = false;
@@ -100,31 +98,28 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   }
 
   // ─── STEP 2: Generate payment token ───────────────────────────────────
+
   Future<void> _generateToken() async {
     setState(() {
       _step = PayStep.generating;
       _isLoading = true;
       _errorMsg = null;
     });
-
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('session_token') ?? '';
       if (token.isEmpty) {
         throw Exception('User is not authenticated. Please log in.');
       }
-
       final res = await _authService.generatePaymentToken(token: token);
       if (res != null && res['token_id'] != null) {
         _tokenId = res['token_id'];
         _secondsRemaining = 300;
-
         // Transition to broadcast step
         setState(() {
           _step = PayStep.broadcasting;
           _isLoading = false;
         });
-
         _startTimer();
         await _checkAndStartHce();
       } else {
@@ -136,9 +131,9 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           _errorMsg = friendlyErrorMessage(
             e,
             fallback:
-                'Unable to generate a boarding ticket. Please check your connection and try again.',
+                'We couldn\'t create your boarding ticket. Check your connection and try again.',
             connectionMessage:
-                'Unable to generate a boarding ticket. Please check your connection and try again.',
+                'We couldn\'t create your boarding ticket. Check your connection and try again.',
           );
           _isLoading = false;
           _step = PayStep.balancePreview;
@@ -148,24 +143,23 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   }
 
   // ─── STEP 3: HCE broadcast ───────────────────────────────────────────
+
   Future<void> _checkAndStartHce() async {
     try {
       bool isSupported = await _hcePlugin.isNfcHceSupported();
       bool isEnabled = await _hcePlugin.isNfcEnabled();
-
       if (!mounted) return;
-
       if (!isSupported) {
         setState(() {
           _hceSupported = false;
           _statusMessage =
-              'NFC is not supported on this device. Please use the QR code instead.';
+              'NFC is not available here. Show the QR code to the driver instead.';
         });
       } else if (!isEnabled) {
         setState(() {
           _hceSupported = true;
           _statusMessage =
-              'NFC is turned off. Enable it in Settings or use the QR code instead.';
+              'NFC is off. Show the QR code to the driver instead.';
         });
       } else {
         await _hcePlugin.startNfcHce(
@@ -176,7 +170,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
         setState(() {
           _hceSupported = true;
           _hceActive = true;
-          _statusMessage = 'READY — HOLD NEAR DRIVER\'S PHONE';
+          _statusMessage = 'Ready — hold near the driver\'s phone.';
         });
       }
     } catch (e) {
@@ -184,7 +178,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
         setState(() {
           _hceSupported = false;
           _statusMessage =
-              'NFC is not supported on this device. Please use the QR code instead.';
+              'NFC is not available here. Show the QR code to the driver instead.';
         });
       }
     }
@@ -215,23 +209,20 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           return;
         }
       });
-
-      // Poll status every 2 seconds
-      if (_secondsRemaining % 2 == 0 &&
-          _tokenId != null &&
-          _step == PayStep.broadcasting) {
+      // Check once a second so payment confirmation feels immediate after a scan.
+      if (_tokenId != null && _step == PayStep.broadcasting) {
         _checkTokenStatus();
       }
     });
   }
 
   Future<void> _checkTokenStatus() async {
-    if (_tokenId == null) return;
+    if (_tokenId == null || _isCheckingTokenStatus) return;
+    _isCheckingTokenStatus = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('session_token') ?? '';
       if (token.isEmpty) return;
-
       final res = await _authService.getPaymentTokenStatus(
         token: token,
         tokenId: _tokenId!,
@@ -260,10 +251,12 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
           _statusRefreshError = friendlyErrorMessage(
             e,
             fallback:
-                'Unable to refresh ticket status. Please check your connection.',
+                'We couldn\'t confirm your boarding ticket right now. Check your connection and try again.',
           );
         });
       }
+    } finally {
+      _isCheckingTokenStatus = false;
     }
   }
 
@@ -272,656 +265,512 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
     final s = seconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
-
-  // ─── BUILD ────────────────────────────────────────────────────────────
+  // UI only. Payment services, token lifecycle and navigation are unchanged.
   @override
   Widget build(BuildContext context) {
+    final Widget content;
+    if (_isLoading) {
+      content = _buildLoadingView();
+    } else if (_step == PayStep.success) {
+      content = _buildSuccessView();
+    } else if (_step == PayStep.failure) {
+      content = _buildFailureView();
+    } else if (_step == PayStep.broadcasting) {
+      content = _buildBroadcastView();
+    } else {
+      content = _buildBalancePreview();
+    }
+
     return Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  CommutasColors.primaryNavy,
+      appBar: AppBar(
+        title: Text('Pay fare', style: CommutasTextStyles.heading2),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+      ),
+      body: !_isLoading && _step == PayStep.balancePreview
+          ? SafeArea(child: content)
+          : SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SizedBox(width: double.infinity, child: content),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _money(double amount) => 'Rs. ${amount.toStringAsFixed(2)}';
+
+  Widget _panel({required Widget child, EdgeInsetsGeometry? padding}) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: CommutasColors.lineBorder),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _primaryAction(String label, VoidCallback? onPressed) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: CommutasColors.primaryNavy,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: CommutasColors.primaryNavy.withOpacity(0.08),
+          disabledForegroundColor: CommutasColors.slateMuted,
+          minimumSize: const Size(0, 52),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          elevation: 0,
+          animationDuration: Duration.zero,
+          splashFactory: NoSplash.splashFactory,
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        child: Text(label, textAlign: TextAlign.center),
+      ),
+    );
+  }
+
+  // A compact, static fare header. The green rule retains the brand accent.
+  Widget _buildTicketHero() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: CommutasColors.primaryNavy,
+        border: Border(bottom: BorderSide(color: CommutasColors.sageGreen, width: 3)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Standard fare',
+            style: CommutasTextStyles.bodyMedium.copyWith(color: Colors.white70),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            _money(fareAmount),
+            style: CommutasTextStyles.heading1.copyWith(
+              color: Colors.white,
+              fontSize: 34,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFareRow(String label, String value, {Color? color}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: CommutasTextStyles.bodyMedium.copyWith(
+              color: color ?? CommutasColors.primaryNavy,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBalancePreview() {
+    final hasVerifiedBalance = _walletBalance != null;
+    final canPay = hasVerifiedBalance && _walletBalance! >= fareAmount;
+    final amountNeeded = hasVerifiedBalance ? fareAmount - _walletBalance! : fareAmount;
+
+    // Keep the main action in reach, independently of the scrollable summary.
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                      decoration: const BoxDecoration(
+                        color: CommutasColors.primaryNavy,
+                        border: Border(
+                          bottom: BorderSide(color: CommutasColors.sageGreen, width: 3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Standard fare',
+                            style: CommutasTextStyles.bodyMedium.copyWith(color: Colors.white70),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _money(fareAmount),
+                            style: CommutasTextStyles.heading1.copyWith(
+                              color: Colors.white,
+                              fontSize: 38,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _panel(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          _buildFareRow(
+                            _walletBalanceIsStale ? 'Last known wallet balance' : 'Wallet balance',
+                            hasVerifiedBalance ? _money(_walletBalance!) : 'Unavailable',
+                          ),
+                          const Divider(height: 28, thickness: 1, color: CommutasColors.lineBorder),
+                          _buildFareRow(
+                            'Balance after payment',
+                            !hasVerifiedBalance ? '—' : canPay ? _money(_walletBalance! - fareAmount) : 'Insufficient balance',
+                            color: hasVerifiedBalance && !canPay ? CommutasColors.danger : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_errorMsg != null) ...[
+                      CommutasErrorBanner(
+                        message: _errorMsg!,
+                        onRetry: _fetchBalance,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (canPay) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('How to board', style: CommutasTextStyles.labelBold),
+                            const SizedBox(height: 14),
+                            _buildBoardingInstruction(
+                              Icons.nfc_rounded,
+                              'Tap to pay',
+                              'Hold your phone near the driver’s phone.',
+                            ),
+                            const SizedBox(height: 14),
+                            _buildBoardingInstruction(
+                              Icons.qr_code_2,
+                              'Or show your QR code',
+                              'Present your boarding ticket to the driver.',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (hasVerifiedBalance) ...[
+                      _buildNotice('Add ${_money(amountNeeded)} to your wallet to continue.', warning: true),
+                    ] else if (_errorMsg == null) ...[
+                      CommutasErrorBanner(message: 'Balance is unavailable right now.', onRetry: _fetchBalance),
+                    ],
+                  ],
                 ),
               ),
-            )
-          : _step == PayStep.success
-          ? _buildSuccessView()
-          : _step == PayStep.failure
-          ? _buildFailureView()
-          : _step == PayStep.broadcasting
-          ? _buildBroadcastView()
-          : _buildBalancePreview(),
+            ),
+          ),
+        ),
+        if (hasVerifiedBalance)
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: CommutasColors.lineBorder)),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (canPay) ...[
+                      Text(
+                        'Your fare is deducted upon confirmation.',
+                        textAlign: TextAlign.center,
+                        style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                      ),
+                      const SizedBox(height: 10),
+                      _primaryAction('Generate boarding ticket', _generateToken),
+                    ] else
+                      _primaryAction('Add funds', () => widget.onNavigateToTab?.call(3)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBoardingInstruction(IconData icon, String title, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: CommutasColors.primaryNavy, size: 24),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: CommutasTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 3),
+              Text(description, style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingView() {
+    final generating = _step == PayStep.generating;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildTicketHero(),
+        _panel(
+          child: Row(
+            children: [
+              const Icon(Icons.hourglass_empty, size: 20, color: CommutasColors.primaryNavy),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  generating ? 'Creating your boarding ticket…' : 'Checking wallet balance…',
+                  style: CommutasTextStyles.bodyMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _primaryAction(generating ? 'Generating ticket…' : 'Loading balance…', null),
+      ],
+    );
+  }
+
+  Widget _buildNotice(String message, {bool warning = false}) {
+    final color = warning ? CommutasColors.warning : CommutasColors.emeraldGreen;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          left: BorderSide(color: color, width: 3),
+          top: const BorderSide(color: CommutasColors.lineBorder),
+          right: const BorderSide(color: CommutasColors.lineBorder),
+          bottom: const BorderSide(color: CommutasColors.lineBorder),
+        ),
+      ),
+      child: Text(
+        message,
+        style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.primaryNavy),
+      ),
+    );
+  }
+
+  Widget _buildBroadcastView() {
+    final active = _hceActive && _hceSupported;
+    final hasNfcStatus = _statusMessage.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: CommutasColors.primaryNavy,
+            border: Border(bottom: BorderSide(color: CommutasColors.sageGreen, width: 3)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Boarding ticket', style: CommutasTextStyles.heading2.copyWith(color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(_money(fareAmount), style: CommutasTextStyles.bodyMedium.copyWith(color: Colors.white70)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('Expires in', style: CommutasTextStyles.bodySmall.copyWith(color: Colors.white70)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatDuration(_secondsRemaining),
+                    style: CommutasTextStyles.heading2.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        _panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    active ? Icons.nfc_rounded : Icons.qr_code_2,
+                    color: active ? CommutasColors.emeraldGreen : CommutasColors.primaryNavy,
+                    size: 26,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          active ? 'Tap to pay' : 'Show QR to pay',
+                          style: CommutasTextStyles.heading2,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          active ? 'Hold the back of your phone near the driver’s phone.' : 'Present the QR code to the driver for fare collection.',
+                          style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 26, thickness: 1, color: CommutasColors.lineBorder),
+              if (_tokenId != null) ...[
+                Text(
+                  active ? 'Or show this QR code' : 'Boarding QR code',
+                  style: CommutasTextStyles.labelBold,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: QrImageView(
+                    data: _tokenId!,
+                    version: QrVersions.auto,
+                    size: 208,
+                    padding: const EdgeInsets.all(12),
+                    gapless: false,
+                    backgroundColor: Colors.white,
+                    foregroundColor: CommutasColors.primaryNavy,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                'Waiting for payment confirmation',
+                textAlign: TextAlign.center,
+                style: CommutasTextStyles.bodySmall.copyWith(color: CommutasColors.slateMuted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (hasNfcStatus && !active) ...[
+          _buildNotice(_statusMessage, warning: true),
+          const SizedBox(height: 8),
+        ],
+        if (_statusRefreshError != null)
+          _buildNotice(_statusRefreshError!, warning: true),
+      ],
     );
   }
 
   Widget _buildSuccessView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: CommutasColors.lightGreenBg,
-                shape: BoxShape.rectangle,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.check_circle_outline, color: CommutasColors.emeraldGreen, size: 30),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Payment confirmed', style: CommutasTextStyles.heading2)),
+                ],
               ),
-              child: const Icon(
-                Icons.check_circle_rounded,
-                color: CommutasColors.emeraldGreen,
-                size: 80,
+              const SizedBox(height: 10),
+              Text(
+                'Your fare has been paid and recorded. You’re ready to ride.',
+                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
               ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              'PAYMENT SUCCESSFUL',
-              style: CommutasTextStyles.heading2.copyWith(
-                color: CommutasColors.emeraldGreen,
-                letterSpacing: 1.0,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Fare of Rs. 100.00 has been collected and logged.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: CommutasColors.primaryNavy,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 48),
-            ElevatedButton(
-              onPressed: () {
-                _fetchBalance(); // refresh wallet balance and go back
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CommutasColors.primaryNavy,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.zero,
-                ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'DONE',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ],
+              const Divider(height: 26, thickness: 1, color: CommutasColors.lineBorder),
+              _buildFareRow('Fare paid', _money(fareAmount)),
+              const SizedBox(height: 12),
+              _buildFareRow('Boarding status', 'Confirmed', color: CommutasColors.emeraldGreen),
+            ],
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        _primaryAction('Done', _fetchBalance),
+      ],
     );
   }
 
   Widget _buildFailureView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFF3F3),
-                shape: BoxShape.rectangle,
-              ),
-              child: const Icon(
-                Icons.cancel_rounded,
-                color: CommutasColors.danger,
-                size: 80,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              'PAYMENT FAILED',
-              style: CommutasTextStyles.heading2.copyWith(
-                color: CommutasColors.danger,
-                letterSpacing: 1.0,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _errorMsg ?? 'Fare collection failed or ticket expired.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
-                color: CommutasColors.primaryNavy,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 48),
-            ElevatedButton(
-              onPressed: () {
-                _fetchBalance(); // try again
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CommutasColors.primaryNavy,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.zero,
-                ),
-                elevation: 0,
-              ),
-              child: const Text(
-                'TRY AGAIN',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── STEP 1 UI: Balance & Fare Preview ────────────────────────────────
-  Widget _buildBalancePreview() {
-    final bool hasVerifiedBalance = _walletBalance != null;
-    final bool hasSufficientBalance =
-        hasVerifiedBalance && _walletBalance! >= fareAmount;
-    final double? remainingBalance = hasVerifiedBalance
-        ? _walletBalance! - fareAmount
-        : null;
-
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            const Icon(
-              Icons.contactless_outlined,
-              size: 48,
-              color: CommutasColors.primaryNavy,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Boarding Ticket',
-              style: CommutasTextStyles.heading2.copyWith(letterSpacing: 1.5),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Generate a secure NFC boarding ticket to pay your fare when boarding.',
-              style: CommutasTextStyles.bodySmall.copyWith(
-                color: CommutasColors.slateMuted,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-
-            // Fare summary card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(
-                  color: CommutasColors.lineBorder,
-                  width: 1.5,
-                ),
-              ),
-              child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  _buildFareRow(
-                    _walletBalanceIsStale
-                        ? 'Last Known Wallet Balance'
-                        : 'Wallet Balance',
-                    hasVerifiedBalance
-                        ? 'Rs. ${_walletBalance!.toStringAsFixed(2)}'
-                        : 'Unavailable',
-                    color: !hasVerifiedBalance
-                        ? CommutasColors.slateMuted
-                        : hasSufficientBalance
-                        ? CommutasColors.emeraldGreen
-                        : CommutasColors.danger,
-                  ),
-                  const Divider(height: 24, color: CommutasColors.lineBorder),
-                  _buildFareRow(
-                    'Standard Fare',
-                    'Rs. ${fareAmount.toStringAsFixed(2)}',
-                    color: CommutasColors.primaryNavy,
-                  ),
-                  const Divider(height: 24, color: CommutasColors.lineBorder),
-                  _buildFareRow(
-                    'Balance After Deduction',
-                    !hasVerifiedBalance
-                        ? '—'
-                        : hasSufficientBalance
-                        ? 'Rs. ${remainingBalance!.toStringAsFixed(2)}'
-                        : '— Insufficient —',
-                    color: !hasVerifiedBalance
-                        ? CommutasColors.slateMuted
-                        : hasSufficientBalance
-                        ? CommutasColors.slateMuted
-                        : CommutasColors.danger,
-                    isBold: true,
-                  ),
+                  const Icon(Icons.error_outline, color: CommutasColors.danger, size: 30),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Payment failed', style: CommutasTextStyles.heading2)),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-
-            // Error message (from previous failed attempt)
-            if (_errorMsg != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3F3),
-                  border: Border.all(color: CommutasColors.danger, width: 1),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      color: CommutasColors.danger,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _errorMsg!,
-                        style: CommutasTextStyles.bodySmall.copyWith(
-                          color: CommutasColors.danger,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-
-            // Action button
-            if (hasSufficientBalance)
-              ElevatedButton(
-                onPressed: _generateToken,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CommutasColors.primaryNavy,
-                  foregroundColor: Colors.white,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  elevation: 0,
-                  minimumSize: const Size(double.infinity, 52),
-                ),
-                child: const Text(
-                  'GENERATE BOARDING TICKET',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              )
-            else if (!hasVerifiedBalance) ...[
-              if (_errorMsg == null)
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: CommutasColors.backgroundGray,
-                    border: Border.all(color: CommutasColors.lineBorder),
-                  ),
-                  child: Text(
-                    'A verified wallet balance is required before generating a boarding ticket.',
-                    style: CommutasTextStyles.bodySmall.copyWith(
-                      color: CommutasColors.slateMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-            ] else ...[
-              // Insufficient balance warning
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8E1),
-                  border: Border.all(color: const Color(0xFFFFB300), width: 1),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Color(0xFFB78103),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'A minimum balance of Rs. ${fareAmount.toStringAsFixed(0)} is required to generate a boarding ticket.',
-                        style: CommutasTextStyles.bodySmall.copyWith(
-                          color: const Color(0xFFB78103),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  widget.onNavigateToTab?.call(3); // Switch to Wallet tab
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CommutasColors.primaryNavy,
-                  foregroundColor: Colors.white,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  elevation: 0,
-                  minimumSize: const Size(double.infinity, 52),
-                ),
-                child: const Text(
-                  'GO TO WALLET & TOP UP',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            // Refresh balance button
-            OutlinedButton(
-              onPressed: _fetchBalance,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: CommutasColors.primaryNavy,
-                side: const BorderSide(
-                  color: CommutasColors.primaryNavy,
-                  width: 1.5,
-                ),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.zero,
-                ),
-                minimumSize: const Size(double.infinity, 48),
-              ),
-              child: const Text('REFRESH BALANCE'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFareRow(
-    String label,
-    String value, {
-    Color? color,
-    bool isBold = false,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: CommutasTextStyles.bodyMedium.copyWith(
-            color: CommutasColors.slateMuted,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-        Text(
-          value,
-          style: CommutasTextStyles.bodyMedium.copyWith(
-            color: color ?? CommutasColors.primaryNavy,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ─── STEP 3 UI: NFC/QR Broadcast ─────────────────────────────────────
-  Widget _buildBroadcastView() {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          children: [
-            Text('Boarding Ticket', style: CommutasTextStyles.heading1),
-            const SizedBox(height: 20),
-            _buildHceVisual(),
-            const SizedBox(height: 32),
-            Text(
-              _hceActive
-                  ? 'Hold Near Driver\'s Phone'
-                  : 'Present this QR code to the driver',
-              style: CommutasTextStyles.heading2,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _hceActive
-                  ? 'Bring the back of your device close to the driver\'s phone to authorize fare deduction.'
-                  : 'Show this QR code to the driver for manual fare collection.',
-              textAlign: TextAlign.center,
-              style: CommutasTextStyles.bodySmall.copyWith(
-                color: CommutasColors.slateMuted,
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildBackupQrCard(),
-            const SizedBox(height: 24),
-            _buildValidityCard(),
-            const SizedBox(height: 16),
-            _buildStatusCard(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHceVisual() {
-    final bool active = _hceActive && _hceSupported;
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        for (int i = 0; i < 2; i++)
-          Container(
-            width: 124.0 + (i * 24),
-            height: 124.0 + (i * 24),
-            decoration: BoxDecoration(
-              color: active
-                  ? CommutasColors.emeraldGreen.withOpacity(0.05 / (i + 1))
-                  : CommutasColors.slateMuted.withOpacity(0.03 / (i + 1)),
-              borderRadius: BorderRadius.zero,
-              border: Border.all(
-                color: active
-                    ? CommutasColors.emeraldGreen.withOpacity(0.12)
-                    : CommutasColors.slateMuted.withOpacity(0.08),
-                width: 1,
-              ),
-            ),
-          ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          decoration: BoxDecoration(
-            color: CommutasColors.primaryNavy,
-            borderRadius: BorderRadius.zero,
-            border: Border.all(color: CommutasColors.lineBorder),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    (active
-                            ? CommutasColors.emeraldGreen
-                            : CommutasColors.slateMuted)
-                        .withOpacity(0.2),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                active ? Icons.nfc_rounded : Icons.nfc_outlined,
-                color: active ? CommutasColors.emeraldGreen : Colors.white60,
-                size: 48,
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
-                active
-                    ? 'NFC READY'
-                    : _hceSupported
-                    ? 'NFC DISABLED'
-                    : 'NFC UNAVAILABLE',
-                style: TextStyle(
-                  color: active ? CommutasColors.emeraldGreen : Colors.white60,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                ),
+                _errorMsg ?? 'Fare collection failed or ticket expired.',
+                style: CommutasTextStyles.bodyMedium.copyWith(color: CommutasColors.slateMuted),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        _primaryAction('Try again', _fetchBalance),
       ],
-    );
-  }
-
-  Widget _buildBackupQrCard() {
-    if (_tokenId == null) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.zero,
-        border: Border.all(color: CommutasColors.lineBorder, width: 1.5),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.qr_code_2,
-                color: CommutasColors.primaryNavy,
-                size: 16,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'BOARDING QR CODE',
-                style: CommutasTextStyles.labelBold.copyWith(
-                  fontSize: 10,
-                  color: CommutasColors.primaryNavy,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          QrImageView(
-            data: _tokenId!,
-            version: QrVersions.auto,
-            size: 160.0,
-            gapless: false,
-            foregroundColor: CommutasColors.primaryNavy,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Present this QR code to the driver.',
-            textAlign: TextAlign.center,
-            style: CommutasTextStyles.bodySmall.copyWith(
-              color: CommutasColors.slateMuted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildValidityCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: CommutasColors.lightGreenBg,
-        border: Border.all(
-          color: CommutasColors.emeraldGreen.withOpacity(0.35),
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.timer_outlined,
-            color: CommutasColors.emeraldGreen,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Ticket valid for',
-              style: CommutasTextStyles.bodySmall.copyWith(
-                color: CommutasColors.primaryNavy,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            _formatDuration(_secondsRemaining),
-            style: CommutasTextStyles.labelBold.copyWith(
-              color: CommutasColors.emeraldGreen,
-              fontSize: 15,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard() {
-    final bool active = _hceActive && _hceSupported;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: active ? CommutasColors.lightGreenBg : const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.zero,
-        border: Border.all(
-          color: active ? CommutasColors.emeraldGreen : const Color(0xFFFFB300),
-          width: 1.2,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            active ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-            color: active
-                ? CommutasColors.emeraldGreen
-                : const Color(0xFFFFB300),
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _statusRefreshError ?? _statusMessage,
-              style: TextStyle(
-                color: active
-                    ? CommutasColors.emeraldGreen
-                    : const Color(0xFFB78103),
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

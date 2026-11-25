@@ -6,14 +6,14 @@ String friendlyErrorMessage(
   Object error, {
   String fallback = 'Something went wrong. Please try again.',
   String connectionMessage =
-      'Unable to connect to Commutas. Please check your connection and try again.',
+      'We couldn\'t reach Commutas right now. Check your connection and try again.',
   String? unauthorizedMessage,
 }) {
   if (error is DioException) {
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.sendTimeout ||
         error.type == DioExceptionType.receiveTimeout) {
-      return 'The request timed out. Please try again.';
+      return 'Commutas is taking longer than usual to respond. Check your connection and try again.';
     }
 
     if (error.type == DioExceptionType.connectionError ||

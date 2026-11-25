@@ -19,15 +19,15 @@ class CommutasErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF3F3),
-        border: Border.all(color: CommutasColors.danger.withOpacity(0.35)),
+        color: CommutasColors.cobaltTint,
+        border: Border.all(color: CommutasColors.accentCobalt.withOpacity(0.18)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.error_outline_rounded,
-            color: CommutasColors.danger,
+            Icons.cloud_off_rounded,
+            color: CommutasColors.accentCobalt,
             size: 20,
           ),
           const SizedBox(width: 10),
@@ -38,7 +38,7 @@ class CommutasErrorBanner extends StatelessWidget {
                 Text(
                   message,
                   style: CommutasTextStyles.bodySmall.copyWith(
-                    color: CommutasColors.danger,
+                    color: CommutasColors.primaryNavy,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -59,7 +59,7 @@ class CommutasErrorBanner extends StatelessWidget {
             TextButton(
               onPressed: onRetry,
               style: TextButton.styleFrom(
-                foregroundColor: CommutasColors.primaryNavy,
+                foregroundColor: CommutasColors.accentCobalt,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 minimumSize: const Size(0, 32),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,

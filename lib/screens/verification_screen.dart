@@ -89,7 +89,7 @@ class _VerificationScreenState extends State<VerificationScreen>
               ? 'Password reset could not be completed. Please try again.'
               : 'Registration could not be completed. Please try again.',
           connectionMessage:
-              'Unable to connect to Commutas. Please check your connection and try again.',
+              'We couldn\'t reach Commutas right now. Check your connection and try again.',
         );
 
         setState(() {

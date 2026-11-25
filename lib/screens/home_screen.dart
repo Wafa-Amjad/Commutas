@@ -169,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
           _preferredRouteError = friendlyErrorMessage(
             e,
             fallback:
-                'Unable to refresh your preferred route. Please try again.',
+                'We couldn\'t refresh your preferred route. Please try again.',
           );
         });
       }
@@ -210,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen>
           _walletBalanceError = friendlyErrorMessage(
             e,
             fallback:
-                'Unable to refresh your wallet balance. Please try again.',
+                'We couldn\'t refresh your wallet balance. Please try again.',
           );
           _walletBalanceIsStale = _walletBalance != null;
         });
@@ -251,8 +251,8 @@ class _HomeScreenState extends State<HomeScreen>
                 _preferredRouteError != null) ...[
               const SizedBox(height: 12),
               CommutasErrorBanner(
-                message:
-                    'Unable to refresh your information. Please check your connection.',
+                message: 'Some home details are temporarily unavailable.',
+                secondaryText: 'Check your connection and try again.',
                 onRetry: () async {
                   await _fetchBalance();
                   await _fetchPreferredRouteDetails();
@@ -792,7 +792,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            'Unable to refresh your preferred route.',
+            'We couldn\'t refresh your preferred route.',
             style: CommutasTextStyles.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -1132,7 +1132,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet>
       } else {
         setState(() {
           _isProcessing = false;
-          _error = 'Failed to initialize payment. Try again.';
+          _error = 'We couldn\'t start the top-up. Please try again.';
         });
         _busController.stop();
       }
@@ -1142,9 +1142,9 @@ class _AddFundsSheetState extends State<_AddFundsSheet>
         _isProcessing = false;
         _error = friendlyErrorMessage(
           e,
-          fallback: 'Unable to initiate payment. Please try again.',
+          fallback: 'We couldn\'t start the top-up. Please try again.',
           connectionMessage:
-              'Unable to initiate payment. Please check your connection and try again.',
+              'We couldn\'t start the top-up right now. Check your connection and try again.',
         );
       });
       _busController.stop();

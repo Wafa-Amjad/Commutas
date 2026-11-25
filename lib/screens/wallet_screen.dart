@@ -191,6 +191,9 @@ class _WalletScreenState extends State<WalletScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasCombinedRefreshError =
+        _balanceError != null && _historyError != null;
+
     return Scaffold(
       backgroundColor: CommutasColors.background,
       appBar: AppBar(
@@ -229,15 +232,24 @@ class _WalletScreenState extends State<WalletScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (hasCombinedRefreshError) ...[
+                CommutasErrorBanner(
+                  message: 'We couldn\'t refresh your wallet right now.',
+                  onRetry: _refreshAll,
+                  secondaryText:
+                      'Check your connection and try again. Your saved details will remain available where possible.',
+                ),
+                const SizedBox(height: 16),
+              ],
               _buildDynamicBalanceCard(),
-              if (_balanceError != null) ...[
+              if (_balanceError != null && !hasCombinedRefreshError) ...[
                 const SizedBox(height: 12),
                 CommutasErrorBanner(
-                  message: _balanceError!,
+                  message: 'We couldn\'t refresh your wallet balance.',
                   onRetry: _fetchBalance,
                   secondaryText: _balanceIsStale
                       ? 'Showing your last known balance.'
-                      : null,
+                      : 'Check your connection and try again.',
                 ),
               ],
               const SizedBox(height: 16),
@@ -250,25 +262,29 @@ class _WalletScreenState extends State<WalletScreen>
               const SizedBox(height: 24),
               Text('Transaction History', style: CommutasTextStyles.labelBold),
               const SizedBox(height: 16),
-              if (_historyError != null && _transactions.isEmpty)
+              if (_historyError != null &&
+                  _transactions.isEmpty &&
+                  !hasCombinedRefreshError)
                 CommutasErrorBanner(
-                  message: _historyError!,
+                  message: 'We couldn\'t load your transaction history.',
                   onRetry: _fetchTransactions,
                 )
               else if (_isLoadingHistory)
                 _buildLoadingState()
+              else if (_transactions.isEmpty && hasCombinedRefreshError)
+                _buildUnavailableHistoryState()
               else if (_transactions.isEmpty)
                 _buildEmptyState()
               else ...[
-                if (_historyError != null)
+                if (_historyError != null && !hasCombinedRefreshError)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: CommutasErrorBanner(
-                      message: _historyError!,
+                      message: 'We couldn\'t refresh your transaction history.',
                       onRetry: _fetchTransactions,
                       secondaryText: _historyIsStale
                           ? 'Showing your last known transactions.'
-                          : null,
+                          : 'Check your connection and try again.',
                     ),
                   ),
                 _buildTransactionList(),
@@ -497,6 +513,29 @@ class _WalletScreenState extends State<WalletScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUnavailableHistoryState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            color: CommutasColors.slateMuted,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Your transaction history will appear here when your connection is restored.',
+              style: CommutasTextStyles.bodySmall,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -755,7 +794,7 @@ class _TopUpSheetState extends State<_TopUpSheet>
       } else {
         setState(() {
           _isProcessing = false;
-          _error = 'Failed to initialize payment. Try again.';
+          _error = 'We couldn\'t start the top-up. Please try again.';
         });
         _busController.stop();
       }
@@ -765,9 +804,9 @@ class _TopUpSheetState extends State<_TopUpSheet>
         _isProcessing = false;
         _error = friendlyErrorMessage(
           e,
-          fallback: 'Unable to initiate payment. Please try again.',
+          fallback: 'We couldn\'t start the top-up. Please try again.',
           connectionMessage:
-              'Unable to initiate payment. Please check your connection and try again.',
+              'We couldn\'t start the top-up right now. Check your connection and try again.',
         );
       });
       _busController.stop();

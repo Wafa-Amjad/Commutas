@@ -431,7 +431,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
         fallback: 'Incorrect registration number or password.',
         unauthorizedMessage: 'Incorrect registration number or password.',
         connectionMessage:
-            'Unable to connect to Commutas. Please check your connection and try again.',
+            'We couldn\'t reach Commutas right now. Check your connection and try again.',
       );
       _setError(errorMsg);
     } finally {
@@ -525,7 +525,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
             'Biometric sign-in could not be completed. Use your password or try again.',
         unauthorizedMessage: 'Biometric sign-in failed. Use your password or try again.',
         connectionMessage:
-            'Unable to connect to Commutas. Please check your connection and try again.',
+            'We couldn\'t reach Commutas right now. Check your connection and try again.',
       );
       _setError(errorMsg);
     } finally {
