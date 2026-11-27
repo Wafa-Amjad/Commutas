@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import '../theme.dart';
 import '../screens/services/auth_service.dart';
 import '../screens/services/friendly_error_message.dart';
+import '../screens/services/connectivity_service.dart';
+import '../widgets/connectivity_guard.dart';
 
 class VerificationScreen extends StatefulWidget {
   final String regNo;
@@ -34,10 +36,13 @@ class _VerificationScreenState extends State<VerificationScreen>
 
   bool _isSuccess = false;
   String? _apiError;
+  bool _isRegistrationRunning = false;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _wasOffline = ConnectivityService.instance.isOffline;
 
     _progressController = AnimationController(
       vsync: this,
@@ -49,11 +54,15 @@ class _VerificationScreenState extends State<VerificationScreen>
       duration: const Duration(seconds: 3),
     )..repeat();
 
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
+
     // Start registration API call
     _runRegistration();
   }
 
   Future<void> _runRegistration() async {
+    if (ConnectivityService.instance.isOffline || _isRegistrationRunning) return;
+    _isRegistrationRunning = true;
     try {
       final Map<String, dynamic>? response;
       if (widget.isReset) {
@@ -96,11 +105,14 @@ class _VerificationScreenState extends State<VerificationScreen>
           _apiError = errorMsg;
         });
       }
+    } finally {
+      _isRegistrationRunning = false;
     }
   }
 
   @override
   void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
     _progressController.dispose();
     _busController.dispose();
     super.dispose();
@@ -108,9 +120,11 @@ class _VerificationScreenState extends State<VerificationScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.background,
-      body: SafeArea(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.background,
+        body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(
@@ -264,8 +278,22 @@ class _VerificationScreenState extends State<VerificationScreen>
             ),
           ),
         ),
+        ),
       ),
     );
+  }
+
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      return;
+    }
+    if (ConnectivityService.instance.isOnline && _wasOffline &&
+        !_isSuccess && _apiError == null) {
+      _wasOffline = false;
+      _runRegistration();
+    }
   }
 
   Widget _buildStatusRow() {

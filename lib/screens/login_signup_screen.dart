@@ -1,6 +1,8 @@
 import 'services/auth_service.dart';
 import 'services/friendly_error_message.dart';
 import 'services/biometric_service.dart';
+import 'services/connectivity_service.dart';
+import '../widgets/connectivity_guard.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'verification_screen.dart';
@@ -295,6 +297,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   // Handle student validation checks
   void _handleSignIn() async {
     if (_lockoutSecondsLeft > 0) return;
+    if (ConnectivityService.instance.isOffline) return;
 
     setState(() {
       _errorMessage = null;
@@ -480,6 +483,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
   }
 
   void _performBiometricAutoLogin(String regNo, String password) async {
+    if (ConnectivityService.instance.isOffline) return;
+
     setState(() {
       _isServerLoading = true;
       _errorMessage = null;
@@ -539,6 +544,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   void _handleSignUp() async {
     if (!_isSignUpValid) return;
+    if (ConnectivityService.instance.isOffline) return;
 
     final String fullRegNo =
         "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
@@ -574,8 +580,10 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Stack(
+        children: [
         Scaffold(
           backgroundColor: CommutasColors.background,
           body: SafeArea(
@@ -644,7 +652,8 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1114,6 +1123,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
     bool disabled = false,
   }) {
     final isTimerActive = _lockoutSecondsLeft > 0;
+    final isOffline = ConnectivityService.instance.isOffline;
 
     // Build background and style config
     Color buttonColor = CommutasColors.primaryNavy;
@@ -1124,7 +1134,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
       style: CommutasTextStyles.buttonLabel,
     );
 
-    if (disabled || isTimerActive) {
+    if (disabled || isTimerActive || isOffline) {
       buttonColor = CommutasColors.sageTint;
       buttonContent = Text(
         isTimerActive
@@ -1153,7 +1163,7 @@ class _LoginSignupScreenState extends State<LoginSignupScreen> {
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           padding: EdgeInsets.zero,
         ),
-        onPressed: (disabled || _isServerLoading || isTimerActive)
+        onPressed: (disabled || _isServerLoading || isTimerActive || isOffline)
             ? null
             : onPressed,
         child: buttonContent,

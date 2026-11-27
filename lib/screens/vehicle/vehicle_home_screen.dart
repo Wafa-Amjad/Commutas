@@ -9,6 +9,8 @@ import '../services/friendly_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'vehicle_history_screen.dart';
 import 'vehicle_error_snackbar.dart';
+import '../../widgets/connectivity_guard.dart';
+import '../services/connectivity_service.dart';
 
 class VehicleHomeScreen extends StatefulWidget {
   final String vehicleName;
@@ -43,10 +45,13 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
   String _vehicleSearchQuery = '';
   String? _vehicleTimeFilter;
   late Future<Map<String, dynamic>?> _profileFuture;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _wasOffline = ConnectivityService.instance.isOffline;
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
     _profileFuture = _fetchProfile();
     _animationController = AnimationController(
       vsync: this,
@@ -58,9 +63,23 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
   @override
   void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
     _animationController.dispose();
     _vehicleSearchCtrl.dispose();
     super.dispose();
+  }
+
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      return;
+    }
+    if (!ConnectivityService.instance.isOnline || !_wasOffline) return;
+    _wasOffline = false;
+    setState(() => _profileFuture = _fetchProfile());
+    _loadWeather();
+    _loadRoutes();
   }
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
@@ -194,10 +213,12 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: _buildAppBar(),
-      body: FutureBuilder<Map<String, dynamic>?>(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: _buildAppBar(),
+        body: FutureBuilder<Map<String, dynamic>?>(
         future: _profileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -227,6 +248,7 @@ class _VehicleHomeScreenState extends State<VehicleHomeScreen> with SingleTicker
             ),
           );
         },
+        ),
       ),
     );
   }

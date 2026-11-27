@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import '../../theme.dart';
 import 'vehicle_error_snackbar.dart';
+import '../../widgets/connectivity_guard.dart';
+import '../services/connectivity_service.dart';
 
 class VehicleMapScreen extends StatefulWidget {
   const VehicleMapScreen({super.key});
@@ -75,6 +77,7 @@ class _VehicleMapScreenState extends State<VehicleMapScreen> with SingleTickerPr
 
   // Opens external Google Maps with COMSATS Abbottabad coordinates
   Future<void> _launchExternalMap() async {
+    if (ConnectivityService.instance.isOffline) return;
     final Uri url = Uri.parse('https://www.google.com/maps/search/?api=1&query=34.1912,73.2418');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) {
@@ -113,9 +116,11 @@ class _VehicleMapScreenState extends State<VehicleMapScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: const Text('GPS Route Tracker'),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -128,7 +133,7 @@ class _VehicleMapScreenState extends State<VehicleMapScreen> with SingleTickerPr
           ),
         ],
       ),
-      body: Stack(
+        body: Stack(
         children: [
           // 1. Stylized Vector Map
           Positioned.fill(
@@ -155,6 +160,7 @@ class _VehicleMapScreenState extends State<VehicleMapScreen> with SingleTickerPr
             child: _buildNavigationPanel(),
           ),
         ],
+        ),
       ),
     );
   }

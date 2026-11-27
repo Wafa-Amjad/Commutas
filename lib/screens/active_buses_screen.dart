@@ -5,6 +5,7 @@ import 'services/friendly_error_message.dart';
 import '../theme.dart';
 import 'active_bus_map_screen.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
 
 class ActiveBusesScreen extends StatefulWidget {
   const ActiveBusesScreen({super.key});
@@ -327,7 +328,9 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen>
         ? _activeBuses
         : _activeBuses.where((b) => b['route_id'] == _selectedRouteId).toList();
 
-    return Scaffold(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
       backgroundColor: CommutasColors.backgroundGray,
       appBar: AppBar(
         title: const Text('Track Active Buses'),
@@ -599,6 +602,7 @@ class _ActiveBusesScreenState extends State<ActiveBusesScreen>
           ),
         ],
       ),
+    ),
     );
   }
 }

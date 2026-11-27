@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:developer' as developer;
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'vehicle_session_screen.dart';
 import 'vehicle_error_snackbar.dart';
 import '../services/auth_service.dart';
 import '../services/friendly_error_message.dart';
 import '../../theme.dart';
+import '../../widgets/connectivity_guard.dart';
+import '../services/connectivity_service.dart';
 
 class VehicleCollectTabScreen extends StatefulWidget {
   final Function(int) onNavigateToTab;
@@ -35,11 +38,20 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
   String? _selectedScheduleId;
   String? _fetchError;
   bool _isInitializingSession = false;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _wasOffline = ConnectivityService.instance.isOffline;
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
     _checkActiveSession();
+  }
+
+  @override
+  void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
+    super.dispose();
   }
 
   @override
@@ -59,6 +71,12 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
       setState(() {
         _isLoading = false;
       });
+      return;
+    }
+
+    if (ConnectivityService.instance.isOffline) {
+      final restored = await _restoreLocalSession(prefs);
+      if (!restored && mounted) setState(() => _isLoading = false);
       return;
     }
 
@@ -88,6 +106,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
         await prefs.setString('active_session_route_name', routeName);
         await prefs.setString('active_session_route_path', routePath);
         await prefs.setString('active_session_timing', timing);
+        await prefs.setString('active_session_status', status);
 
         if (mounted) {
           setState(() {
@@ -126,9 +145,51 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
             }
             return;
           }
-        } catch (_) {}
+        } catch (e) {
+          // A failed verification is not proof that the session ended. Keep
+          // the cached operational state until the server confirms otherwise.
+          final statusCode = e is DioException ? e.response?.statusCode : null;
+          if (statusCode == null || statusCode >= 500) {
+            if (await _restoreLocalSession(prefs)) return;
+          }
+        }
       }
       await _clearLocalSession();
+    }
+  }
+
+  Future<bool> _restoreLocalSession(SharedPreferences prefs) async {
+    final sId = prefs.getString('active_session_id');
+    final scheduleId = prefs.getString('active_session_schedule_id');
+    final routeName = prefs.getString('active_session_route_name');
+    final routePath = prefs.getString('active_session_route_path');
+    final timing = prefs.getString('active_session_timing');
+    final status = prefs.getString('active_session_status') ?? 'created';
+    if (sId == null || scheduleId == null || routeName == null ||
+        routePath == null || timing == null) {
+      return false;
+    }
+    if (mounted) {
+      setState(() {
+        _sessionId = sId;
+        _scheduleId = scheduleId;
+        _routeName = routeName;
+        _routePath = routePath;
+        _timing = timing;
+        _sessionStatus = status;
+        _isLoading = false;
+      });
+    }
+    return true;
+  }
+
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+    } else if (ConnectivityService.instance.isOnline && _wasOffline) {
+      _wasOffline = false;
+      _checkActiveSession();
     }
   }
 
@@ -139,6 +200,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
     await prefs.remove('active_session_route_name');
     await prefs.remove('active_session_route_path');
     await prefs.remove('active_session_timing');
+    await prefs.remove('active_session_status');
     
     if (mounted) {
       setState(() {
@@ -155,6 +217,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
 
   /// Fetch route schedules assigned to this vehicle from the server.
   Future<void> _fetchAssignedSchedules() async {
+    if (ConnectivityService.instance.isOffline) return;
     setState(() {
       _isLoading = true;
       _fetchError = null;
@@ -210,7 +273,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
 
   /// Initialize a new boarding session via the server API.
   Future<void> _initializeSession() async {
-    if (_selectedScheduleId == null) return;
+    if (_selectedScheduleId == null || ConnectivityService.instance.isOffline) return;
 
     setState(() {
       _isInitializingSession = true;
@@ -243,6 +306,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
       await prefs.setString('active_session_route_name', selected['route']!);
       await prefs.setString('active_session_route_path', selected['path']!);
       await prefs.setString('active_session_timing', selected['timing']!);
+      await prefs.setString('active_session_status', status);
 
       if (mounted) {
         setState(() {
@@ -279,6 +343,7 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
     await prefs.remove('active_session_route_name');
     await prefs.remove('active_session_route_path');
     await prefs.remove('active_session_timing');
+    await prefs.remove('active_session_status');
 
     if (mounted) {
       setState(() {
@@ -294,6 +359,27 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_sessionId != null &&
+        _scheduleId != null &&
+        _routeName != null &&
+        _routePath != null &&
+        _timing != null) {
+      return VehicleSessionScreen(
+        sessionId: _sessionId!,
+        scheduleId: _scheduleId!,
+        routeName: _routeName!,
+        routePath: _routePath!,
+        timing: _timing!,
+        initialStatus: _sessionStatus ?? 'created',
+        onSessionEnded: _onSessionEnded,
+      );
+    }
+
+    return ConnectivityGuard(
+      presentation: _isInitializingSession
+          ? ConnectivityPresentation.banner
+          : ConnectivityPresentation.fullScreen,
+      builder: (context) {
     if (_isLoading || _isInitializingSession) {
       return Scaffold(
         backgroundColor: CommutasColors.backgroundGray,
@@ -312,19 +398,6 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
             ],
           ),
         ),
-      );
-    }
-
-    // If active session exists, show the session dashboard
-    if (_sessionId != null && _scheduleId != null && _routeName != null && _routePath != null && _timing != null) {
-      return VehicleSessionScreen(
-        sessionId: _sessionId!,
-        scheduleId: _scheduleId!,
-        routeName: _routeName!,
-        routePath: _routePath!,
-        timing: _timing!,
-        initialStatus: _sessionStatus ?? 'created',
-        onSessionEnded: _onSessionEnded,
       );
     }
 
@@ -455,7 +528,10 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
               
               if (_schedules.isNotEmpty)
                 ElevatedButton(
-                  onPressed: _selectedScheduleId != null ? _initializeSession : null,
+                   onPressed: _selectedScheduleId != null &&
+                           ConnectivityService.instance.isOnline
+                       ? _initializeSession
+                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: CommutasColors.primaryNavy,
                     foregroundColor: Colors.white,
@@ -474,6 +550,8 @@ class _VehicleCollectTabScreenState extends State<VehicleCollectTabScreen> {
           ),
         ),
       ),
+    );
+      }
     );
   }
 }

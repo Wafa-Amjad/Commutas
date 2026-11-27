@@ -4,6 +4,7 @@ import 'services/route_service.dart';
 import 'services/friendly_error_message.dart';
 import '../theme.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -299,9 +300,11 @@ class _ScheduleScreenState extends State<ScheduleScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: const Text('Route Schedules'),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -317,12 +320,13 @@ class _ScheduleScreenState extends State<ScheduleScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildScheduleList(_morningSchedules, true),
-          _buildScheduleList(_eveningSchedules, false),
-        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildScheduleList(_morningSchedules, true),
+            _buildScheduleList(_eveningSchedules, false),
+          ],
+        ),
       ),
     );
   }

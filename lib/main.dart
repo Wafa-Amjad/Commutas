@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/splash_screen.dart';
+import 'screens/services/connectivity_service.dart';
 import 'theme.dart';
 
 void main() async {
@@ -22,6 +23,7 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }
+  await ConnectivityService.instance.start();
   runApp(const MyApp());
 }
 

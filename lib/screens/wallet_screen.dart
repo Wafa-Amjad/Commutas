@@ -8,6 +8,8 @@ import 'services/wallet_service.dart';
 import 'services/notification_service.dart';
 import 'services/friendly_error_message.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
+import 'services/connectivity_service.dart';
 
 class WalletScreen extends StatefulWidget {
   final String? studentRegNo;
@@ -68,6 +70,7 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Future<void> _checkPendingTransactions() async {
+    if (ConnectivityService.instance.isOffline) return;
     if (_accessToken == null) return;
     final changed = await _walletService.checkPendingTransactions(
       _accessToken!,
@@ -194,9 +197,11 @@ class _WalletScreenState extends State<WalletScreen>
     final hasCombinedRefreshError =
         _balanceError != null && _historyError != null;
 
-    return Scaffold(
-      backgroundColor: CommutasColors.background,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.background,
+        appBar: AppBar(
         title: Text('My Wallet', style: CommutasTextStyles.heading2),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -223,10 +228,10 @@ class _WalletScreenState extends State<WalletScreen>
           ),
         ],
       ),
-      body: RefreshIndicator(
-        color: CommutasColors.accentCobalt,
-        onRefresh: _refreshAll,
-        child: SingleChildScrollView(
+        body: RefreshIndicator(
+          color: CommutasColors.accentCobalt,
+          onRefresh: _refreshAll,
+          child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -291,6 +296,7 @@ class _WalletScreenState extends State<WalletScreen>
               ],
             ],
           ),
+        ),
         ),
       ),
     );
@@ -727,6 +733,7 @@ class _TopUpSheetState extends State<_TopUpSheet>
   }
 
   Future<void> _initiatePayment() async {
+    if (ConnectivityService.instance.isOffline) return;
     if (_isProcessing) return;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) {
@@ -815,20 +822,23 @@ class _TopUpSheetState extends State<_TopUpSheet>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+          ),
         ),
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: _isProcessing ? _buildProcessingView() : _buildFormView(),
       ),
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: _isProcessing ? _buildProcessingView() : _buildFormView(),
     );
   }
 

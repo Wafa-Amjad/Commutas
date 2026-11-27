@@ -14,6 +14,8 @@ import 'services/auth_service.dart';
 import 'services/friendly_error_message.dart';
 import 'dart:developer' as developer;
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
+import 'services/connectivity_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String studentName;
@@ -55,6 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _profileError;
   bool _isLoadingRoutes = true;
   String? _routesError;
+  bool _isEditingProfile = false;
 
   @override
   void initState() {
@@ -204,6 +207,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _changeAvatar(BuildContext context) async {
+    if (ConnectivityService.instance.isOffline) return;
+    _isEditingProfile = true;
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
@@ -263,12 +268,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ).showSnackBar(SnackBar(content: Text(errorMsg)));
         }
       } finally {
+        _isEditingProfile = false;
         widget.onLoadingChanged?.call(false, null, null);
       }
+    } else {
+      _isEditingProfile = false;
     }
   }
 
   Future<void> _deleteAvatar(BuildContext context) async {
+    if (ConnectivityService.instance.isOffline) return;
+    _isEditingProfile = true;
     widget.onLoadingChanged?.call(
       true,
       'REMOVING PICTURE',
@@ -309,11 +319,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ).showSnackBar(SnackBar(content: Text(errorMsg)));
       }
     } finally {
+      _isEditingProfile = false;
       widget.onLoadingChanged?.call(false, null, null);
     }
   }
 
   void _showAvatarOptions(BuildContext context) {
+    if (ConnectivityService.instance.isOffline) return;
+    _isEditingProfile = true;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -370,19 +383,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (mounted && !_isLoadingProfile) setState(() => _isEditingProfile = false);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: _isEditingProfile
+          ? ConnectivityPresentation.banner
+          : ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: const Text('My Profile'),
         elevation: 0,
         backgroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -422,6 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildActionButtons(context),
             const SizedBox(height: 16),
           ],
+        ),
         ),
       ),
     );
@@ -639,6 +659,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showRouteSelectionDialog() {
+    if (ConnectivityService.instance.isOffline) return;
+    _isEditingProfile = true;
     if (_isLoadingRoutes) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -734,11 +756,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (mounted) setState(() => _isEditingProfile = false);
+    });
   }
 
   Future<void> _updatePreferredRoute(String routeId) async {
-    if (_accessToken == null || _accessToken!.isEmpty) return;
+    if (_accessToken == null || _accessToken!.isEmpty ||
+        ConnectivityService.instance.isOffline) return;
+    _isEditingProfile = true;
 
     try {
       final routeService = RouteService();
@@ -786,6 +812,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isEditingProfile = false);
     }
   }
 

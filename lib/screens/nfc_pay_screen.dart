@@ -10,6 +10,8 @@ import 'services/wallet_service.dart';
 import 'services/friendly_error_message.dart';
 import '../theme.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
+import 'services/connectivity_service.dart';
 
 /// Student payment screen with a 3-step flow:
 /// Step 1: Balance & Fare Preview (fetch balance, show fare, check eligibility)
@@ -46,15 +48,19 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   bool _isCheckingTokenStatus = false;
   String _statusMessage = '';
   String? _statusRefreshError;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _wasOffline = ConnectivityService.instance.isOffline;
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
     _fetchBalance();
   }
 
   @override
   void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
     _timer?.cancel();
     _stopHce();
     super.dispose();
@@ -63,6 +69,10 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   // ─── STEP 1: Fetch wallet balance ─────────────────────────────────────
 
   Future<void> _fetchBalance() async {
+    if (ConnectivityService.instance.isOffline) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     setState(() {
       _isLoading = true;
       _errorMsg = null;
@@ -100,6 +110,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   // ─── STEP 2: Generate payment token ───────────────────────────────────
 
   Future<void> _generateToken() async {
+    if (ConnectivityService.instance.isOffline) return;
     setState(() {
       _step = PayStep.generating;
       _isLoading = true;
@@ -217,6 +228,7 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
   }
 
   Future<void> _checkTokenStatus() async {
+    if (ConnectivityService.instance.isOffline) return;
     if (_tokenId == null || _isCheckingTokenStatus) return;
     _isCheckingTokenStatus = true;
     try {
@@ -260,6 +272,21 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
     }
   }
 
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      return;
+    }
+    if (!ConnectivityService.instance.isOnline || !_wasOffline) return;
+    _wasOffline = false;
+    if (_step == PayStep.balancePreview && !_isLoading) {
+      _fetchBalance();
+    } else if (_step == PayStep.broadcasting) {
+      _checkTokenStatus();
+    }
+  }
+
   String _formatDuration(int seconds) {
     final m = seconds ~/ 60;
     final s = seconds % 60;
@@ -281,27 +308,32 @@ class _NFCPayScreenState extends State<NFCPayScreen> {
       content = _buildBalancePreview();
     }
 
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: _step == PayStep.balancePreview
+          ? ConnectivityPresentation.fullScreen
+          : ConnectivityPresentation.banner,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: Text('Pay fare', style: CommutasTextStyles.heading2),
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
-      body: !_isLoading && _step == PayStep.balancePreview
-          ? SafeArea(child: content)
-          : SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: SizedBox(width: double.infinity, child: content),
-            ),
-          ),
-        ),
+        body: !_isLoading && _step == PayStep.balancePreview
+            ? SafeArea(child: content)
+            : SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: SizedBox(width: double.infinity, child: content),
+                    ),
+                  ),
+                ),
+              ),
       ),
     );
   }

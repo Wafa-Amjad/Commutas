@@ -322,7 +322,7 @@ class AuthService {
         'Collect Vehicle Fare Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'AuthService',
       );
-      return null;
+      rethrow;
     }
   }
 
@@ -367,7 +367,7 @@ class AuthService {
         'Get Active Vehicle Session Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'AuthService',
       );
-      return null;
+      rethrow;
     }
   }
 
@@ -392,7 +392,7 @@ class AuthService {
         'Get Payment Token Status Failed: ${e.response?.data?['detail'] ?? e.message}',
         name: 'AuthService',
       );
-      return null;
+      rethrow;
     }
   }
 

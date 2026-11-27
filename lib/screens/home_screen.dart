@@ -12,6 +12,8 @@ import 'services/notification_service.dart';
 import 'services/route_service.dart';
 import 'services/friendly_error_message.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
+import 'services/connectivity_service.dart';
 import 'dart:developer' as developer;
 import 'reset_password_screen.dart';
 import 'schedule_screen.dart';
@@ -90,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _checkPendingTransactions() async {
+    if (ConnectivityService.instance.isOffline) return;
     if (_accessToken == null) return;
     final changed = await _walletService.checkPendingTransactions(
       _accessToken!,
@@ -239,34 +242,37 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     _checkPreferredRouteUpdate();
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            _buildCombinedHeaderWalletCard(),
-            if (_walletBalanceError != null ||
-                _preferredRouteError != null) ...[
-              const SizedBox(height: 12),
-              CommutasErrorBanner(
-                message: 'Some home details are temporarily unavailable.',
-                secondaryText: 'Check your connection and try again.',
-                onRetry: () async {
-                  await _fetchBalance();
-                  await _fetchPreferredRouteDetails();
-                },
-              ),
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: _buildAppBar(),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              _buildCombinedHeaderWalletCard(),
+              if (_walletBalanceError != null ||
+                  _preferredRouteError != null) ...[
+                const SizedBox(height: 12),
+                CommutasErrorBanner(
+                  message: 'Some home details are temporarily unavailable.',
+                  secondaryText: 'Check your connection and try again.',
+                  onRetry: () async {
+                    await _fetchBalance();
+                    await _fetchPreferredRouteDetails();
+                  },
+                ),
+              ],
+              const SizedBox(height: 16),
+              _buildNfcPaymentCard(),
+              _buildRoadDivider(),
+              _buildQuickActions(),
+              _buildRoadDivider(),
+              _buildPreferredRouteCard(),
+              const SizedBox(height: 24),
             ],
-            const SizedBox(height: 16),
-            _buildNfcPaymentCard(),
-            _buildRoadDivider(),
-            _buildQuickActions(),
-            _buildRoadDivider(),
-            _buildPreferredRouteCard(),
-            const SizedBox(height: 24),
-          ],
+          ),
         ),
       ),
     );
@@ -1065,6 +1071,7 @@ class _AddFundsSheetState extends State<_AddFundsSheet>
   }
 
   Future<void> _initiatePayment() async {
+    if (ConnectivityService.instance.isOffline) return;
     if (_isProcessing) return;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) {
@@ -1153,20 +1160,23 @@ class _AddFundsSheetState extends State<_AddFundsSheet>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: CommutasColors.lineBorder, width: 1),
+          ),
         ),
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: _isProcessing ? _buildProcessingView() : _buildFormView(),
       ),
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: _isProcessing ? _buildProcessingView() : _buildFormView(),
     );
   }
 

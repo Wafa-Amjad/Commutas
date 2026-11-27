@@ -4,6 +4,8 @@ import '../../theme.dart';
 import '../services/auth_service.dart';
 import '../login_signup_screen.dart';
 import 'vehicle_error_snackbar.dart';
+import '../../widgets/connectivity_guard.dart';
+import '../services/connectivity_service.dart';
 
 class VehicleProfileScreen extends StatefulWidget {
   final String vehicleName;
@@ -23,11 +25,34 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
   final AuthService _authService = AuthService();
   late Future<Map<String, dynamic>?> _profileFuture;
   bool _profileErrorNotificationShown = false;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
+    _wasOffline = ConnectivityService.instance.isOffline;
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
     _profileFuture = _fetchProfile();
+  }
+
+  @override
+  void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
+    super.dispose();
+  }
+
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      return;
+    }
+    if (!ConnectivityService.instance.isOnline || !_wasOffline) return;
+    _wasOffline = false;
+    setState(() {
+      _profileErrorNotificationShown = false;
+      _profileFuture = _fetchProfile();
+    });
   }
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
@@ -39,15 +64,17 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.fullScreen,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: const Text('Vehicle Profile'),
         backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
-      body: FutureBuilder<Map<String, dynamic>?>(
+        body: FutureBuilder<Map<String, dynamic>?>(
         future: _profileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -118,6 +145,7 @@ class _VehicleProfileScreenState extends State<VehicleProfileScreen> {
             ),
           );
         },
+        ),
       ),
     );
   }

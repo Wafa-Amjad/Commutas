@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import 'verification_screen.dart';
 import 'services/biometric_service.dart';
+import 'services/connectivity_service.dart';
+import '../widgets/connectivity_guard.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -97,7 +99,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   }
 
   void _handleResetPassword() async {
-    if (!_isResetValid) return;
+    if (!_isResetValid || ConnectivityService.instance.isOffline) return;
 
     final String fullRegNo = "$_selectedSession-$_selectedDept-${_rollNoController.text.trim().padLeft(3, '0')}";
     final String portalPassword = _portalPasswordController.text.trim();
@@ -128,9 +130,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.background,
-      body: SafeArea(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.background,
+        body: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -380,7 +384,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           _buildPrimaryButton(
                             label: 'RESET PASSWORD',
                             onPressed: _handleResetPassword,
-                            disabled: !_isResetValid,
+                            disabled: !_isResetValid ||
+                                ConnectivityService.instance.isOffline,
                           ),
                           const SizedBox(height: 20.0),
 
@@ -413,6 +418,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             // Bottom Identity strip
             _buildIdentityBar(),
           ],
+        ),
         ),
       ),
     );

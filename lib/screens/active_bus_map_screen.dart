@@ -8,6 +8,8 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 import 'services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/commutas_error_state.dart';
+import '../widgets/connectivity_guard.dart';
+import 'services/connectivity_service.dart';
 
 class ActiveBusMapScreen extends StatefulWidget {
   final String routeId;
@@ -58,6 +60,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
   bool _isManualReconnecting = false;
+  bool _wasOffline = false;
 
   // Last update tracking
   DateTime? _lastUpdateTime;
@@ -77,6 +80,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
     super.initState();
     _passengersBoarded = widget.passengersBoarded;
     _maxCapacity = widget.maxCapacity;
+    _wasOffline = ConnectivityService.instance.isOffline;
 
     // Set initial position if provided by the active buses API call
     if (widget.initialLatitude != null && widget.initialLongitude != null) {
@@ -87,6 +91,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
       _busPosition = const LatLng(34.1912, 73.2418);
     }
 
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
     _connectWebSocket();
 
     // Tick every second to update the "last update X ago" display
@@ -112,6 +117,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
 
   @override
   void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
     _reconnectTimer?.cancel();
     _lastUpdateDisplayTimer?.cancel();
     _mapResetController.close();
@@ -133,6 +139,14 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
     _reconnectTimer?.cancel();
     _closeWebSocket();
     if (!mounted) return;
+
+    if (ConnectivityService.instance.isOffline) {
+      setState(() {
+        _connectionStatus = 'DISCONNECTED';
+        _isManualReconnecting = false;
+      });
+      return;
+    }
 
     setState(() {
       _connectionStatus = 'CONNECTING';
@@ -259,6 +273,8 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
       _isManualReconnecting = false;
     });
 
+    if (ConnectivityService.instance.isOffline) return;
+
     _reconnectAttempts++;
     final backoffSeconds = _reconnectAttempts > 5
         ? 15
@@ -273,6 +289,25 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
         _connectWebSocket();
       }
     });
+  }
+
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      _reconnectTimer?.cancel();
+      _closeWebSocket();
+      if (_connectionStatus != 'DISCONNECTED') {
+        setState(() {
+          _connectionStatus = 'DISCONNECTED';
+          _isManualReconnecting = false;
+        });
+      }
+    } else if (ConnectivityService.instance.isOnline && _wasOffline &&
+        _connectionStatus != 'CONNECTED') {
+      _wasOffline = false;
+      _connectWebSocket();
+    }
   }
 
   Color _getStatusColor() {
@@ -447,9 +482,13 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: CommutasColors.backgroundGray,
-      appBar: AppBar(
+    return ConnectivityGuard(
+      presentation: _mapError
+          ? ConnectivityPresentation.fullScreen
+          : ConnectivityPresentation.banner,
+      builder: (context) => Scaffold(
+        backgroundColor: CommutasColors.backgroundGray,
+        appBar: AppBar(
         title: Text(
           widget.routeName.isNotEmpty ? widget.routeName : widget.routeId,
         ),
@@ -602,7 +641,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
           ),
         ],
       ),
-      floatingActionButton: Column(
+        floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton(
@@ -623,6 +662,7 @@ class _ActiveBusMapScreenState extends State<ActiveBusMapScreen>
           ),
           const SizedBox(height: 140),
         ],
+        ),
       ),
     );
   }

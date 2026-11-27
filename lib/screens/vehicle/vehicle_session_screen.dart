@@ -13,6 +13,8 @@ import '../services/auth_service.dart';
 import '../services/friendly_error_message.dart';
 import '../../theme.dart';
 import 'vehicle_error_snackbar.dart';
+import '../../widgets/connectivity_guard.dart';
+import '../services/connectivity_service.dart';
 
 /// Vehicle Session Dashboard — embedded in the bottom nav (no AppBar back button).
 ///
@@ -66,6 +68,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   Timer? _reconnectTimer;
   bool _isConnectingWebSocket = false;
   bool _connectionNoticeShown = false;
+  bool _wasOffline = false;
   bool _isSessionClosing = false;
   Position? _currentPosition;
   String _gpsStatus = 'GPS Idle';
@@ -109,6 +112,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   void _showConnectionIssue(String message, Duration retryDelay) {
     if (!mounted || _status != 'TRANSIT' || _isSessionClosing) return;
 
+    if (ConnectivityService.instance.isOffline) {
+      setState(() => _gpsStatus = 'Offline — location broadcasting paused');
+      return;
+    }
+
     setState(() => _gpsStatus = message);
     if (!_connectionNoticeShown) {
       _connectionNoticeShown = true;
@@ -137,6 +145,13 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   void initState() {
     super.initState();
     _sessionId = widget.sessionId;
+    _wasOffline = ConnectivityService.instance.isOffline;
+    _status = widget.initialStatus.toLowerCase() == 'active'
+        ? 'TRANSIT'
+        : widget.initialStatus.toLowerCase() == 'completed'
+        ? 'COMPLETED'
+        : 'BOARDING';
+    ConnectivityService.instance.addListener(_handleConnectivityChanged);
 
     _pulseController = AnimationController(
       vsync: this,
@@ -148,6 +163,10 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
   }
 
   Future<void> _fetchSessionDetails() async {
+    if (ConnectivityService.instance.isOffline) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     setState(() {
       _isLoading = true;
     });
@@ -210,6 +229,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   @override
   void dispose() {
+    ConnectivityService.instance.removeListener(_handleConnectivityChanged);
     _pulseController.dispose();
     _gpsTimer?.cancel();
     _reconnectTimer?.cancel();
@@ -330,6 +350,15 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   // ─── FARE COLLECTION ──────────────────────────────────────────────────
   Future<void> _validateStudentFare(String tokenId) async {
+    if (ConnectivityService.instance.isOffline) {
+      if (mounted) {
+        setState(() {
+          _isProcessingNfc = false;
+          _nfcStatus = 'Offline — fare validation paused';
+        });
+      }
+      return;
+    }
     // 1. Client-side format check (UUIDv4 validation)
     final uuidRegex = RegExp(
       r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
@@ -410,6 +439,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   // ─── DEPART TRIP ──────────────────────────────────────────────────────
   Future<void> _departTrip() async {
+    if (ConnectivityService.instance.isOffline) return;
     setState(() {
       _isLoading = true;
     });
@@ -452,6 +482,11 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
         _isConnectingWebSocket ||
         _isSessionClosing)
       return;
+
+    if (ConnectivityService.instance.isOffline) {
+      if (mounted) setState(() => _gpsStatus = 'Offline — location broadcasting paused');
+      return;
+    }
 
     _isConnectingWebSocket = true;
     _reconnectTimer?.cancel();
@@ -534,6 +569,12 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   Future<void> _broadcastCurrentLocation() async {
     if (_status != 'TRANSIT') return;
+    if (ConnectivityService.instance.isOffline) {
+      if (mounted) {
+        setState(() => _gpsStatus = 'Offline — location broadcasting paused');
+      }
+      return;
+    }
 
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -601,6 +642,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
 
   // ─── END TRIP ─────────────────────────────────────────────────────────
   Future<void> _endTrip() async {
+    if (ConnectivityService.instance.isOffline) return;
     // Confirm before ending
     final confirmed = await showDialog<bool>(
       context: context,
@@ -676,10 +718,33 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
     }
   }
 
+  void _handleConnectivityChanged() {
+    if (!mounted) return;
+    if (ConnectivityService.instance.isOffline) {
+      _wasOffline = true;
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _closeWebSocket();
+      if (_status == 'TRANSIT') {
+        setState(() => _gpsStatus = 'Offline — location broadcasting paused');
+      }
+    } else if (ConnectivityService.instance.isOnline && _wasOffline) {
+      _wasOffline = false;
+      if (_status == 'TRANSIT') {
+        _connectWebSocket();
+        _broadcastCurrentLocation();
+      } else if (_isLoading) {
+        _fetchSessionDetails();
+      }
+    }
+  }
+
   // ─── BUILD ────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return PopScope(
+    return ConnectivityGuard(
+      presentation: ConnectivityPresentation.banner,
+      builder: (context) => PopScope(
       canPop: !_isMapExpanded || _status != 'TRANSIT' || _isLoading,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _isMapExpanded && _status == 'TRANSIT' && !_isLoading) {
@@ -897,6 +962,7 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -1231,12 +1297,14 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
           const Divider(color: CommutasColors.lineBorder, height: 1),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: () {
+            onPressed: ConnectivityService.instance.isOnline
+                ? () {
               _stopNfcReader();
               setState(() {
                 _isScanningQr = true;
               });
-            },
+            }
+                : null,
             icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
             label: const Text(
               'SCAN STUDENT QR TICKET',
@@ -1642,7 +1710,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
         top: false,
         child: _status == 'BOARDING'
             ? ElevatedButton(
-                onPressed: _departTrip,
+                onPressed: ConnectivityService.instance.isOnline
+                    ? _departTrip
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CommutasColors.primaryNavy,
                   foregroundColor: Colors.white,
@@ -1662,7 +1732,9 @@ class _VehicleSessionScreenState extends State<VehicleSessionScreen>
                 ),
               )
             : ElevatedButton(
-                onPressed: _endTrip,
+                onPressed: ConnectivityService.instance.isOnline
+                    ? _endTrip
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: CommutasColors.danger,
                   foregroundColor: Colors.white,
